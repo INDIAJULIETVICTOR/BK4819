@@ -63,9 +63,10 @@ Task serc (10, TASK_FOREVER, &sercomm);
 BK4819 beken(10, 11, 12, 13);                                   // Passa i pin CS, MOSI, MISO, e SCK
 
 //--------------------------------------------------------- Definizione variabili
-uint32_t frequenza = 74025UL * 1000;  
+uint32_t frequenza = 145500UL * 1000;  
 uint32_t step      = 12500UL;
 uint8_t  squelch   = 136;
+uint8_t  modo      = AF_FM;
 
 volatile int posizione = 0;  // Posizione dell'encoder
 volatile bool direzione;      // Direzione di rotazione
@@ -78,7 +79,7 @@ bool toggleState = false;
 bool lastButtonState = HIGH;  
 
 //--------------------------------------------------------- Definizione librerie Icom CI-V
-IcomSim radio(Serial, frequenza, AF_FM, squelch);                   // usa la seriale di sistema USB
+IcomSim radio(Serial);                                          // usa la seriale di sistema USB
 
 // #define RX_PIN 10                                            // pin usati da softwareserial
 // #define TX_PIN 11
@@ -95,7 +96,7 @@ void setup()
     Serial.begin(19200); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
 
-    radio.Initialize(frequenza, AF_FM, 136);
+    radio.Initialize(frequenza, modo, squelch);
 
     pinMode(PIN_S1, INPUT);
     pinMode(PIN_S2, INPUT);
@@ -216,43 +217,40 @@ void sercomm( void )
   switch( radio.isChanged())
   {
     case COMMAND_SET_FREQUENCY:
-      {
-        frequenza = radio.getFrequency();
 
-        digitalWrite(PIN_MUTE, HIGH); 
-        beken.BK4819_Set_Frequency(frequenza);
-        digitalWrite(PIN_MUTE, mute); 
-      }
+      frequenza = radio.getFrequency();
+
+      digitalWrite(PIN_MUTE, HIGH); 
+      beken.BK4819_Set_Frequency(frequenza);
+      digitalWrite(PIN_MUTE, mute); 
       break;
 
     case COMMAND_SET_SQUELCH:
-      {
-        squelch = radio.getSquelch();
-        beken.BK4819_Set_Squelch(squelch, squelch+4, 0,0,0,0);
-      }
+
+      squelch = radio.getSquelch();
+      beken.BK4819_Set_Squelch(squelch, squelch+4, 0,0,0,0);
       break;  
 
     case COMMAND_SET_MODE:
+
+      // MODE_AM = 0x00   # Codice per AM
+      // MODE_FM = 0x01   # Codice per FM
+      // MODE_SSB = 0x02  # Codice per SSB
+
+      modo = radio.getMode();
+      switch(modo)
       {
-        // MODE_AM = 0x00   # Codice per AM
-        // MODE_FM = 0x01   # Codice per FM
-        // MODE_SSB = 0x02  # Codice per SSB
+        case 0:   // # Commuta in AM
+          beken.BK4819_Set_AF(AF_AM);
+          break;
 
-        uint8_t mode = radio.getMode();
-        switch(mode)
-        {
-          case 0:   // # Commuta in AM
-            beken.BK4819_Set_AF(AF_AM);
-            break;
+        case 1:   // # Commuta in FM
+          beken.BK4819_Set_AF(AF_FM);
+          break;
 
-          case 1:   // # Commuta in FM
-            beken.BK4819_Set_AF(AF_FM);
-            break;
-
-          case 2:   // # Commuta in DSB
-            beken.BK4819_Set_AF(AF_DSB);
-            break;  
-        }
+        case 2:   // # Commuta in DSB
+          beken.BK4819_Set_AF(AF_DSB);
+          break;  
       }
       break;  
   }
