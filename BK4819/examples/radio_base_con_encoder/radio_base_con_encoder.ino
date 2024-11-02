@@ -62,17 +62,10 @@ Task serc (10, TASK_FOREVER, &sercomm);
 //--------------------------------------------------------- Definizione del chip beken
 BK4819 beken(10, 11, 12, 13);                                   // Passa i pin CS, MOSI, MISO, e SCK
 
-IcomSim radio(Serial);                                          // usa la seriale di sistema USB
-
-// #define RX_PIN 10                                            // pin usati da softwareserial
-// #define TX_PIN 11
-
-// SoftwareSerial mySerial(RX_PIN, TX_PIN);
-// IcomSim radio(mySerial);                                     // Usa SoftwareSerial per la comunicazione seriale
-
 //--------------------------------------------------------- Definizione variabili
 uint32_t frequenza = 74025UL * 1000;  
 uint32_t step      = 12500UL;
+uint8_t  squelch   = 136;
 
 volatile int posizione = 0;  // Posizione dell'encoder
 volatile bool direzione;      // Direzione di rotazione
@@ -83,6 +76,16 @@ bool Txon = false;
 bool statoPrecedente = false;
 bool toggleState = false;   
 bool lastButtonState = HIGH;  
+
+//--------------------------------------------------------- Definizione librerie Icom CI-V
+IcomSim radio(Serial, frequenza, AF_FM, squelch);                   // usa la seriale di sistema USB
+
+// #define RX_PIN 10                                            // pin usati da softwareserial
+// #define TX_PIN 11
+
+// SoftwareSerial mySerial(RX_PIN, TX_PIN);
+// IcomSim radio(mySerial);                                     // Usa SoftwareSerial per la comunicazione seriale
+
 
 //=============================================================================================
 //
@@ -144,9 +147,6 @@ void loop()
   runner.execute();
 }
 
-
-
-
 //=============================================================================================
 //
 //=============================================================================================
@@ -206,7 +206,6 @@ void keyboard ( void )
   lastButtonState = currentButtonState;
 }
 
-
 //=============================================================================================
 //
 //=============================================================================================
@@ -228,9 +227,8 @@ void sercomm( void )
 
     case COMMAND_SET_SQUELCH:
       {
-        uint8_t value = radio.getSquelch();
-        beken.BK4819_Set_Squelch(value, value+4, 0,0,0,0);
-        // beken.BK4819_RX_TurnOn();
+        squelch = radio.getSquelch();
+        beken.BK4819_Set_Squelch(squelch, squelch+4, 0,0,0,0);
       }
       break;  
 
