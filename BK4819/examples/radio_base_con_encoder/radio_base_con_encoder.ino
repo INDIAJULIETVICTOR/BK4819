@@ -32,13 +32,15 @@
 #include <IcomSim.h>
 
 #define PIN_PTT A0
+
+#define PIN_IRQ_BEKEN 2
 #define PIN_S1 3
 #define PIN_S2 4
 #define PIN_LED_TX 5
 #define PIN_LED_RX 6
 #define PIN_MUTE 7
 #define PIN_PB_MONITOR 8
-#define PIN_IRQ_BEKEN 9
+
 
 // #include <SoftwareSerial.h>
 
@@ -52,10 +54,10 @@ void interrupt();
 void smeter();
 
 //--------------------------------------------------------- Definizione dei task
-Task irq  (1, TASK_FOREVER, &interrupt);
+//Task irq  (1, TASK_FOREVER, &interrupt);
 Task keyb (50, TASK_FOREVER, &keyboard);                         // task che gestisce una pulsantiera
 Task serc (10, TASK_FOREVER, &sercomm);
-Task rssi (500, TASK_FOREVER, &smeter);
+//Task rssi (500, TASK_FOREVER, &smeter);
 
 //--------------------------------------------------------- Definizione del chip beken
 BK4819 beken(10, 11, 12, 13);                                   // Passa i pin CS, MOSI, MISO, e SCK
@@ -69,8 +71,8 @@ IcomSim radio(Serial);                                          // usa la serial
 // IcomSim radio(mySerial);                                     // Usa SoftwareSerial per la comunicazione seriale
 
 //--------------------------------------------------------- Definizione variabili
-uint32_t frequenza = 74025UL * 100;  
-uint32_t step      = 1250UL;
+uint32_t frequenza = 74025UL * 1000;  
+uint32_t step      = 12500UL;
 
 volatile int posizione = 0;  // Posizione dell'encoder
 volatile bool direzione;      // Direzione di rotazione
@@ -89,6 +91,8 @@ void setup()
 {
     Serial.begin(19200); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
+
+    radio.Initialize(frequenza, AF_FM, 136);
 
     pinMode(PIN_S1, INPUT);
     pinMode(PIN_S2, INPUT);
@@ -119,17 +123,28 @@ void setup()
   //--------------------------------------------------------- Aggiunta dei task allo scheduler
   runner.addTask(keyb);
   runner.addTask(serc);
-  runner.addTask(irq);
-  runner.addTask(rssi);
+  //runner.addTask(irq);
+  //runner.addTask(rssi);
 
   //--------------------------------------------------------- Avvio dei task
   keyb.enable();
   serc.enable();
-  irq.enable();
+  //irq.enable();
   //rssi.enable();
 
-  attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE); // Interruzione su cambiamento su pin A
+  attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
+  attachInterrupt(digitalPinToInterrupt(PIN_IRQ_BEKEN), interrupt, RISING);   // Interruzione su cambiamento irq del beken
 }
+
+//=============================================================================================
+//
+//=============================================================================================
+void loop() 
+{
+  runner.execute();
+}
+
+
 
 
 //=============================================================================================
@@ -148,31 +163,6 @@ void mute_audio ( bool stato )
     digitalWrite(PIN_LED_RX, HIGH);                             // LED Verde acceso
   }
   mute = stato;
-}
-
-
-//=============================================================================================
-//
-//=============================================================================================
-void loop() 
-{
-  runner.execute();
-}
-
-//=============================================================================================
-//
-//=============================================================================================
-void interrupt ( void )
-{
-  if ( digitalRead(PIN_IRQ_BEKEN))
-  {
-    const uint16_t irqtype = beken.BK4819_Check_Irq_type();
-    if(!monitor)
-    {
-      if (irqtype & Squelch_Lost) mute_audio(false);
-      if (irqtype & Squelch_Found) mute_audio(true);
-    }  
-  }
 }
 
 //=============================================================================================
@@ -228,7 +218,7 @@ void sercomm( void )
   {
     case COMMAND_SET_FREQUENCY:
       {
-        uint32_t frequenza = radio.getFrequency()/100;
+        frequenza = radio.getFrequency();
 
         digitalWrite(PIN_MUTE, HIGH); 
         beken.BK4819_Set_Frequency(frequenza);
@@ -268,6 +258,7 @@ void sercomm( void )
       }
       break;  
   }
+  
 }
 
 
@@ -285,11 +276,24 @@ void smeter( void )
 //=============================================================================================
 //
 //=============================================================================================
+void interrupt ( void )
+{
+    const uint16_t irqtype = beken.BK4819_Check_Irq_type();
+    if(!monitor)
+    {
+      if (irqtype & Squelch_Lost) mute_audio(false);
+      if (irqtype & Squelch_Found) mute_audio(true);
+    }  
+}
+
+//=============================================================================================
+//
+//=============================================================================================
 void leggiEncoder()
 {
-    static int ultimoValoreA = LOW; // Memorizza l'ultimo stato di PIN_S1 (fase A)
-    int valoreA = digitalRead(PIN_S1); // Legge il valore attuale di PIN_S1
-    int valoreB = digitalRead(PIN_S2); // Legge il valore attuale di PIN_S2
+    static int ultimoValoreA = LOW;           // Memorizza l'ultimo stato di PIN_S1 (fase A)
+    int valoreA = digitalRead(PIN_S1);        // Legge il valore attuale di PIN_S1
+    int valoreB = digitalRead(PIN_S2);        // Legge il valore attuale di PIN_S2
 
     // Verifica una transizione da LOW a HIGH o da HIGH a LOW su PIN_S1
     if (valoreA != ultimoValoreA)
@@ -302,17 +306,15 @@ void leggiEncoder()
             {
                 // Rotazione in senso orario
                 frequenza += step;
-                direzione = false;
             }
             else
             {
                 // Rotazione in senso antiorario
                 frequenza -= step;
-                direzione = true;
             }
 
-            Serial.print("frequenza = ");
-            Serial.println((uint32_t) frequenza);
+            beken.BK4819_Set_Frequency ( frequenza );
+            radio.send_frequency(frequenza, 0xE0, 0x00);
         }
     }
 

@@ -453,8 +453,10 @@ BK4819_IRQType_t BK4819::BK4819_Check_Irq_type( void )
 // ---------------------------------------------------- Imposta Frequenza
 void BK4819::BK4819_Set_Frequency(uint32_t Frequency)
 {
-	BK4819_Write_Register(0x38, (Frequency >>  0) & 0xFFFF);
-	BK4819_Write_Register(0x39, (Frequency >> 16) & 0xFFFF);
+	const uint32_t Freq = Frequency/10;
+
+	BK4819_Write_Register(0x38, (Freq >>  0) & 0xFFFF);
+	BK4819_Write_Register(0x39, (Freq >> 16) & 0xFFFF);
 
 	BK4819_Write_Register(0x30, 0);
 	BK4819_Write_Register(0x30, 0b1011111111110001); 
