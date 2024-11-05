@@ -61,7 +61,7 @@ const t_gain_table gain_table[] =
 	{0x3FF	,0 },      //   31 		+33  			3		7		3		7
 };
 
-t_Vfo_Data Vfo;
+t_Vfo_Data VfoD;
 
 // ******************************************************************************************************************************
 //
@@ -382,7 +382,7 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
 // ---------------------------------------------------- Imposta il registro AF
 void BK4819::BK4819_Set_AF(AF_Type_t af) 
 {
-	Vfo.AFmode = af;
+	VfoD.AFmode = af;
 	
 	// AF Output Inverse Mode = Inverse
 	// Undocumented bits 0x4040

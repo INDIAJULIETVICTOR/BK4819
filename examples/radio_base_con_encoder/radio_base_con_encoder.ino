@@ -54,19 +54,15 @@ void interrupt();
 void smeter();
 
 //--------------------------------------------------------- Definizione dei task
-//Task irq  (1, TASK_FOREVER, &interrupt);
-Task keyb (50, TASK_FOREVER, &keyboard);                         // task che gestisce una pulsantiera
+Task keyb (50, TASK_FOREVER, &keyboard);                        // task che gestisce una pulsantiera
 Task serc (10, TASK_FOREVER, &sercomm);
-//Task rssi (500, TASK_FOREVER, &smeter);
+Task rssi (100, TASK_FOREVER, &smeter);
 
 //--------------------------------------------------------- Definizione del chip beken
 BK4819 beken(10, 11, 12, 13);                                   // Passa i pin CS, MOSI, MISO, e SCK
 
 //--------------------------------------------------------- Definizione variabili
-uint32_t frequenza = 145500UL * 1000;  
-uint32_t step      = 12500UL;
-uint8_t  squelch   = 136;
-uint8_t  modo      = AF_FM;
+VfoData_t Vfo;
 
 volatile int posizione = 0;  // Posizione dell'encoder
 volatile bool direzione;      // Direzione di rotazione
@@ -93,10 +89,17 @@ IcomSim radio(Serial);                                          // usa la serial
 //=============================================================================================
 void setup() 
 {
-    Serial.begin(19200); 
+    Vfo.Frequency = 145500UL * 1000;  
+    Vfo.step      = 12500UL;
+    Vfo.Sql       = 136;
+    Vfo.Mode      = AF_FM;
+    Vfo.Gain      = 26;
+    Vfo.AGC       = AGC_MAN;
+
+    Serial.begin(115200); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
 
-    radio.Initialize(frequenza, modo, squelch);
+    radio.Initialize(Vfo);
 
     pinMode(PIN_S1, INPUT);
     pinMode(PIN_S2, INPUT);
@@ -115,26 +118,24 @@ void setup()
     beken.BK4819_Init();                                        // Inizializza il dispositivo BK4819
 
     beken.BK4819_Set_AF(AF_FM);		                              // attiva demodulazione FM
-    beken.BK4819_Set_Frequency ( frequenza );                   // imposta frequenza
+    beken.BK4819_Set_Frequency ( Vfo.Frequency );                   // imposta frequenza
     beken.BK4819_Set_Filter_Bandwidth(BK4819_FILTER_BW_10k);	  // imposta BW e filtri audio
     beken.BK4819_Squelch_Mode (RSSI);                           // tipo squelch
     beken.BK4819_Set_Squelch (130,136, 127,127, 127, 127);      // setup Squelch
     beken.BK4819_IRQ_Set ( Squelch_Lost | Squelch_Found );      // definizione interrupt
     beken.BK4819_RX_TurnOn();	                                  // accensione modulo radio
-    beken.BK4819_Set_AGC_Gain(AGC_MAN, 26);                     // imposta AGC
+    beken.BK4819_Set_AGC_Gain(Vfo.AGC, Vfo.Gain);               // imposta AGC e RFGain
     beken.BK4819_Enable_Mic(31);                                // mic Gain max = 31
 
   //--------------------------------------------------------- Aggiunta dei task allo scheduler
   runner.addTask(keyb);
   runner.addTask(serc);
-  //runner.addTask(irq);
-  //runner.addTask(rssi);
+  runner.addTask(rssi);
 
   //--------------------------------------------------------- Avvio dei task
   keyb.enable();
   serc.enable();
-  //irq.enable();
-  //rssi.enable();
+  rssi.enable();
 
   attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
   attachInterrupt(digitalPinToInterrupt(PIN_IRQ_BEKEN), interrupt, RISING);   // Interruzione su cambiamento irq del beken
@@ -210,52 +211,58 @@ void keyboard ( void )
 //=============================================================================================
 //
 //=============================================================================================
-void sercomm( void )
+void sercomm(void)
 {
   radio.processCIVCommand();
 
-  switch( radio.isChanged())
+  uint16_t changedFlags = radio.isChanged();
+
+  //--------------------------------------------------------- Controlla se la frequenza è cambiata
+  if (changedFlags & FLAG_FREQUENCY_CHANGED)
   {
-    case COMMAND_SET_FREQUENCY:
+    Vfo.Frequency = radio.getFrequency();
 
-      frequenza = radio.getFrequency();
-
-      digitalWrite(PIN_MUTE, HIGH); 
-      beken.BK4819_Set_Frequency(frequenza);
-      digitalWrite(PIN_MUTE, mute); 
-      break;
-
-    case COMMAND_SET_SQUELCH:
-
-      squelch = radio.getSquelch();
-      beken.BK4819_Set_Squelch(squelch, squelch+4, 0,0,0,0);
-      break;  
-
-    case COMMAND_SET_MODE:
-
-      // MODE_AM = 0x00   # Codice per AM
-      // MODE_FM = 0x01   # Codice per FM
-      // MODE_SSB = 0x02  # Codice per SSB
-
-      modo = radio.getMode();
-      switch(modo)
-      {
-        case 0:   // # Commuta in AM
-          beken.BK4819_Set_AF(AF_AM);
-          break;
-
-        case 1:   // # Commuta in FM
-          beken.BK4819_Set_AF(AF_FM);
-          break;
-
-        case 2:   // # Commuta in DSB
-          beken.BK4819_Set_AF(AF_DSB);
-          break;  
-      }
-      break;  
+    digitalWrite(PIN_MUTE, HIGH); 
+    beken.BK4819_Set_Frequency(Vfo.Frequency);
+    digitalWrite(PIN_MUTE, mute); 
   }
-  
+
+  //--------------------------------------------------------- Controlla se lo squelch è cambiato
+  if (changedFlags & FLAG_SQL_CHANGED)
+  {
+    Vfo.Sql = radio.getSquelch();
+    beken.BK4819_Set_Squelch(Vfo.Sql, Vfo.Sql + 4, 0, 0, 0, 0);
+  }
+
+  //--------------------------------------------------------- Controlla se la modalità è cambiata
+  if (changedFlags & FLAG_MODE_CHANGED)
+  {
+    Vfo.Mode = radio.getMode();
+
+    switch (Vfo.Mode)
+    {
+      case 0:   // Commuta in AM
+        beken.BK4819_Set_AF(AF_AM);
+        break;
+
+      case 1:   // Commuta in FM
+        beken.BK4819_Set_AF(AF_FM);
+        break;
+
+      case 2:   // Commuta in DSB
+        beken.BK4819_Set_AF(AF_DSB);
+        break;
+    }
+  }
+
+  //--------------------------------------------------------- Controlla se il guadagno è cambiato
+  if (changedFlags & FLAG_GAIN_CHANGED)
+  {
+    Vfo.Gain = radio.getGain();
+    beken.BK4819_Set_AGC_Gain(AGC_MAN, Vfo.Gain); 
+  }
 }
+
 
 
 //=============================================================================================
@@ -263,9 +270,9 @@ void sercomm( void )
 //=============================================================================================
 void smeter( void )
 {
-  int16_t rssi = beken.BK4819_Get_RSSI();
-
-
+  // int16_t rssi = beken.BK4819_Get_RSSI();
+  uint16_t rssi = beken.BK4819_Read_Register(0x67);
+  radio.send_rssi(rssi, 0xE0, 0x00);
 }
 
 
@@ -301,16 +308,16 @@ void leggiEncoder()
             if (valoreB == LOW)
             {
                 // Rotazione in senso orario
-                frequenza += step;
+                Vfo.Frequency += Vfo.step;
             }
             else
             {
                 // Rotazione in senso antiorario
-                frequenza -= step;
+                 Vfo.Frequency -= Vfo.step;
             }
 
-            beken.BK4819_Set_Frequency ( frequenza );
-            radio.send_frequency(frequenza, 0xE0, 0x00);
+            beken.BK4819_Set_Frequency ( Vfo.Frequency );
+            radio.send_frequency(Vfo.Frequency, 0xE0, 0x00);
         }
     }
 
