@@ -392,6 +392,8 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			
 			int16_t BK4819_Get_RSSI (void);
 			
+			void BK4819_SCN_select( uint8_t csPin );
+			
 			void BK4819_Write_Register(uint16_t address, uint16_t data);
 			void BK4819_Init();  // Dichiara qui la funzione
 			void BK4819_RX_TurnOff(void);

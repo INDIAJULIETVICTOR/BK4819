@@ -66,6 +66,9 @@ t_Vfo_Data VfoD;
 // ******************************************************************************************************************************
 //
 // ******************************************************************************************************************************
+
+volatile bool spiInUse = false;
+
 // ---------------------------------------------------- Configurazione Libreria
 BK4819::BK4819(int csPin, int MosiPin, int MisoPin, int sckPin) 
 {
@@ -86,9 +89,32 @@ BK4819::BK4819(int csPin, int MosiPin, int MisoPin, int sckPin)
     SPI.setClockDivider(SPI_CLOCK_DIV64); 		// Imposta la velocità SPI 250 Khz ( non aumentare la velocita' )
 }
 
+void BK4819::BK4819_SCN_select( uint8_t csPin )
+{
+	_csPin = csPin;
+	pinMode(_csPin, OUTPUT);					// Metti il pin in modalità output per la scrittura
+	digitalWrite(_csPin, HIGH);   				// Disabilita inizialmente il chip select
+}
+
+
 // ---------------------------------------------------- Scrive in un registro del BK4819
 void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data) 
 {
+												// Definisci il timeout in microsecondi
+    const unsigned long timeout = 100000UL; 	// 10 millisecondi
+    unsigned long startTime = micros();
+												// Attendi il lock con timeout
+    while (spiInUse) 
+	{
+        if ((micros() - startTime) > timeout) 
+		{
+			spiInUse = false;					// Rilascia il lock
+            return;  							// Esci dalla funzione per evitare stallo
+        }
+    }
+	
+    spiInUse = true;							// Prendi il lock
+	
     pinMode(_MosiPin, OUTPUT);  		
 	pinMode(_sckPin, OUTPUT);
 												// 1. Abbassa manualmente il clock prima di abbassare il CS
@@ -105,12 +131,29 @@ void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data)
     digitalWrite(_csPin, HIGH);     			// Rilascia il chip
     pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura
 	pinMode(_sckPin, INPUT);  					// Imposta il clock alto inizialmente (modalità 3)
+	
+    spiInUse = false;							// Rilascia il lock
 }
 
 
 // ---------------------------------------------------- Legge da un registro del BK4819
 uint16_t BK4819::BK4819_Read_Register(uint16_t address) 
 {
+												// Definisci il timeout in microsecondi
+    const unsigned long timeout = 100000UL; 	// 100 millisecondi
+    unsigned long startTime = micros();
+												// Attendi il lock con timeout
+    while (spiInUse) 
+	{
+        if ((micros() - startTime) > timeout) 
+		{
+			spiInUse = false;					// Rilascia il lock
+            return 0;  							// Esci dalla funzione per evitare stallo
+        }
+    }
+	
+    spiInUse = true;							// Prendi il lock
+	
     pinMode(_MosiPin, OUTPUT);  				// Imposta il pin in modalità output per l'invio dell'indirizzo
 	pinMode(_sckPin, OUTPUT);
 												// 1. Abbassa manualmente il clock prima di abbassare il CS
@@ -129,6 +172,8 @@ uint16_t BK4819::BK4819_Read_Register(uint16_t address)
     digitalWrite(_csPin, HIGH);     			// Rilascia il chip
     pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura
 	pinMode(_sckPin, INPUT);  					// Imposta il clock alto inizialmente (modalità 3)
+	
+	spiInUse = false;							// Rilascia il lock
 	
     return result;
 }
@@ -422,18 +467,24 @@ void BK4819::BK4819_Set_AF(AF_Type_t af)
     BK4819_Write_Register(0x47, 0x6040 | (af << 8));			// Scrive nel registro 47 per configurare la modalità AF
 }
 
-// ---------------------------------------------------- Cancella Interrupt
-void BK4819::BK4819_Clear_Interrupt( void )
+// ---------------------------------------------------- Cancella Interrupt con timeout
+void BK4819::BK4819_Clear_Interrupt(void)
 {
-	while (1)													// azzera tutti gli interrupt pendenti per non attivare una ricezione non desiderata
-	{
-		const uint16_t Status = BK4819_Read_Register(0x0C);		// Registro Interrupt
-		if ((Status & 1u) == 0) break;							// <0> INTERRUPT REQUEST  1=Interrupt Request; 0=No Request.
+    uint16_t timeout_counter = 100;  							// Definisci un numero massimo di tentativi
 
-		BK4819_Write_Register(0x02, 0);							// Cancella gli interrupt pendenti
-		delayMicroseconds(100);									// tempo di attesa per la lettura successiva
-	}
+    while (timeout_counter--) 									// Diminuisci il contatore a ogni iterazione
+    {
+        BK4819_Write_Register(0x02, 0); 						// Cancella gli interrupt pendenti
+
+        const uint16_t Status = BK4819_Read_Register(0x0C); 	// Registro Interrupt
+        if ((Status & 1u) == 0) break; 							// Se non ci sono più interrupt, esci dal ciclo
+
+        delayMicroseconds(100); // tempo di attesa per la lettura successiva
+    }
 }
+
+
+
 
 // ---------------------------------------------------- Interrupt set
 void BK4819::BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask)
