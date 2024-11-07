@@ -409,7 +409,6 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			void BK4819_Set_AF(AF_Type_t af);
 			void BK4819_Set_Frequency(uint32_t Frequency);
 			void BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value);
-			void BK4819_Set_TxDeviation ( uint16_t value );
 			void BK4819_Set_Xtal(BK4819_Xtal_t mode);
 			void BK4819_RF_Set_Agc(u8 mode);
 			void BK4819_Set_AFC(uint8_t value);
@@ -419,10 +418,13 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			void BK4819_Disable_DTMF(void);
 			
 			void BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING );
+			void BK4819_Set_Power_TX(uint8_t level);
 			void BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable);
 			void BK4819_Enable_TXLink(void);
 			void BK4819_Disable_TXLink(void);
 			void BK4819_Mute_Tx(bool mute);
+			void BK4819_Set_TxDeviation ( uint8_t value );
+			
 			void BK4819_Prepare_Transmit(void);
 			void BK4819_TxOn(void);
 

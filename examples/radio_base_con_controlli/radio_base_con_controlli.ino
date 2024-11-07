@@ -97,7 +97,7 @@ void setup()
     Vfo[0].mute_port = PIN_MUTE1;
     Vfo[1].mute_port = PIN_MUTE2;
 
-    Vfo[VfoNum].Frequency = 74025UL * 1000;  
+    Vfo[VfoNum].Frequency = 27000UL * 1000;  
     Vfo[VfoNum].step      = 12500UL;
     Vfo[VfoNum].Sql       = 136;
     Vfo[VfoNum].Mode      = AF_FM;
@@ -121,7 +121,7 @@ void setup()
     pinMode(PIN_S2, INPUT);
 
     pinMode(PIN_IRQ_BEKEN, INPUT_PULLUP);                       // Ingresso Linea IRQ del beken ( GPIO 4 )
-    pinMode(PIN_PB_MONITOR, INPUT);                             // Pulsante MONITOR
+    pinMode(PIN_PB_MONITOR, INPUT_PULLUP);                      // Pulsante MONITOR
 
     pinMode(PIN_MUTE1, OUTPUT);                                 // abilitazione audio MUTE primo modulo
     pinMode(PIN_MUTE2, OUTPUT);                                 // abilitazione audio MUTE secondo modulo
@@ -146,6 +146,8 @@ void setup()
     beken.BK4819_RX_TurnOn();	                                  // accensione modulo radio
     beken.BK4819_Set_AGC_Gain(Vfo[VfoNum].AGC, Vfo[VfoNum].Gain);               // imposta AGC e RFGain
     beken.BK4819_Enable_Mic(31);                                // mic Gain max = 31
+    beken.BK4819_Set_TxDeviation ( 5 );                         // deviazione TX 0 = disabilitata 1 = Min 10 = max
+    beken.BK4819_Set_Power_TX(0);                               // tx disabilitata        
 
   //--------------------------------------------------------- configurazione interrupt
   attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
@@ -205,30 +207,29 @@ void mute_audio ( bool stato )
 //=============================================================================================
 void controlli ( void )
 {
-  //radio.Debug_Print("Keyboard \r\n");
+  // --------------------------------------------------------- Lettura PTT
+  int ValoreAn = analogRead(PIN_PTT);                     // Legge il valore dalla porta A0
+ 
+  if (ValoreAn < 100 && !statoPrecedente) 
+  {
+                                                          // Attiva la trasmissione 
+      digitalWrite(PIN_LED_TX, HIGH);                     // LED Rosso acceso
+      Txon = true;
+      statoPrecedente = true;
 
-  //--------------------------------------------------------- Lettura PTT
-  // int ValoreAn = analogRead(PIN_PTT);                     // Legge il valore dalla porta A0
-   
-  // if (ValoreAn < 10 && !statoPrecedente) 
-  // {
-  //                                                         // Attiva la trasmissione 
-  //     digitalWrite(PIN_LED_TX, HIGH);                     // LED Rosso acceso
-  //     Txon = true;
-  //     statoPrecedente = true;
+      beken.BK4819_Set_Power_TX(2);                       // uscita a zero dB 0 = tx OFF 1 = min 15 = Max
+      beken.BK4819_Prepare_Transmit();
+  }
+  else if (ValoreAn > 500 && statoPrecedente) 
+  {
+                                                          // Disattiva la trasmissione e attiva la ricezione
+      digitalWrite(PIN_LED_TX, LOW);                      // LED Rosso spento
+      Txon = false;
+      statoPrecedente = false;
 
-  //     beken.BK4819_Prepare_Transmit();
-  // }
-  // else if (ValoreAn > 150 && statoPrecedente) 
-  // {
-  //                                                         // Disattiva la trasmissione e attiva la ricezione
-  //     digitalWrite(PIN_LED_TX, LOW);                      // LED Rosso spento
-  //     Txon = false;
-  //     statoPrecedente = false;
-
-  //     // Attiva la ricezione
-  //     beken.BK4819_RX_TurnOn();
-  // }
+      // Attiva la ricezione
+      beken.BK4819_RX_TurnOn();
+  }
 
   //--------------------------------------------------------- Lettura pulsante Monitor
   bool currentButtonState = digitalRead(PIN_PB_MONITOR);
@@ -240,9 +241,9 @@ void controlli ( void )
   }
 
   //--------------------------------------------------------- aggiornamento squelch analogico
-  update_squelch();
+  // update_squelch();
   //--------------------------------------------------------- aggiornamento rfgain analogico
-  update_rfgain();
+  // update_rfgain();
 
   //--------------------------------------------------------- Aggiorna lo stato precedente del pulsante
   lastButtonState = currentButtonState;
@@ -415,7 +416,7 @@ void leggiEncoder()
               }
 
               beken.BK4819_Set_Frequency ( Vfo[VfoNum].Frequency );
-              delay(10)
+              delay(10);
               radio.send_frequency(Vfo[VfoNum].Frequency, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
               attesa = millis();
           }

@@ -241,7 +241,7 @@ void BK4819::BK4819_Init()
 	
 	BK4819_Set_Xtal(XTAL26M);
 
-	BK4819_Write_Register(0x36, 0x0000);  		// Registro 36: configurazione dell'amplificatore di potenza (PA) Bias = 0V
+	BK4819_Write_Register(0x36, 0x0000);  		// Registro 36: configurazione dell'amplificatore di potenza (PA) Bias = 0V  0x0000 = spegne trasmettitore
 												// <15:8>	Bias output 0-3.2V
 												// <7>		Enable PA Ctl out
 												// <5:3>	Gain 1	 0-7
@@ -309,7 +309,7 @@ void BK4819::BK4819_RX_TurnOff(void)
 // ---------------------------------------------------- Accensione radio in RX
 void BK4819::BK4819_RX_TurnOn(void)
 {
-	BK4819_Write_Register(0x36, 0x0000);
+	BK4819_Write_Register(0x36, 0x0000);		// spegne trasmettitore
 	
 	// DSP Voltage Setting = 1			1 
 	
@@ -903,6 +903,41 @@ void BK4819::BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING )
 */										
 										
 }
+// ---------------------------------------------------- imposta la potenza al finale	
+void BK4819::BK4819_Set_Power_TX(uint8_t level)
+{
+    bool enable_tx = true;
+    
+    if (level > 15) return;
+    
+    if (level == 0) enable_tx = false;
+    
+    // Matrice di valori per gain1 e gain2
+    const uint8_t gain_matrix[16][2] = 
+    {
+        {0, 0},  // level 0 con tx disabilitata
+        {1, 0},  // level 1
+        {1, 1},  // level 2
+        {2, 1},  // level 3
+        {2, 2},  // level 4 --> uscita a 0 dB
+        {3, 1},  // level 5
+        {3, 2},  // level 6
+        {3, 3},  // level 7
+        {4, 3},  // level 8
+        {4, 4},  // level 9
+        {4, 5},  // level 10
+        {5, 5},  // level 11
+        {6, 5},  // level 12
+        {6, 6},  // level 13
+        {7, 6},  // level 14
+        {7, 7}   // level 15
+    };
+
+    uint8_t gain1 = gain_matrix[level][0];
+    uint8_t gain2 = gain_matrix[level][1];
+
+    BK4819_Set_Power_Amplifier(0, gain1, gain2, enable_tx);
+}
 
 // ---------------------------------------------------- Abilita Finale alla trasmissione		
 void BK4819::BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable)
@@ -966,16 +1001,20 @@ void BK4819::BK4819_Disable_TXLink(void)
 }
 
 // ---------------------------------------------------- Deviazione trasmissione
-void BK4819::BK4819_Set_TxDeviation ( uint16_t value )
+void BK4819::BK4819_Set_TxDeviation ( uint8_t value )
 {
+	if (value>10) return;
+	
+	const uint16_t  mod[]={0,1230,1300,1350,1400,1450,1500,1550,1600,1650,1700};  	// impostazioni deviazione
+	
 	// REG_40   RF TxDeviation.
 	// <13>		1   abilita i toni DCS ( non documentato se messo a 0 non funzionano piu' )
 	// <12>		1	Enable RF TxDeviation.  1=Enable; 0=Disable
 	//
 	// <11:0>	4D0	RF Tx Deviation Tuning (Apply for both in-band signal and sub-audio signal). 0=min; 0xFFF=max 
 	
-	if (value == 0)	BK4819_Write_Register(0x40,(2u << 12) | (value & 0xFFF));	// con zero disabilita la deviazione in trasmissione
-	else 			BK4819_Write_Register(0x40,(3u << 12) | (value & 0xFFF));	// con qualsiasi altro valore la abilita.
+	if (value == 0)	BK4819_Write_Register(0x40,(2u << 12) | (mod[value] & 0xFFF));	// con zero disabilita la deviazione in trasmissione
+	else 			BK4819_Write_Register(0x40,(3u << 12) | (mod[value] & 0xFFF));	// con qualsiasi altro valore la abilita.
 }
 
 // ---------------------------------------------------- Mute Audio Tx per invio toni o altro
@@ -1040,10 +1079,13 @@ void BK4819_Exit_Bypass(void)
 */
 
 // ---------------------------------------------------- 
+
+
+
 void BK4819::BK4819_Prepare_Transmit(void)
 {
 	// BK4819_Exit_Bypass();
-	BK4819_Set_Power_Amplifier(0, 2, 2, 1);
+	// BK4819_Set_Power_Amplifier(0, 2, 2, 1);
 	BK4819_Mute_Tx(false);
 	BK4819_TxOn();
 }
