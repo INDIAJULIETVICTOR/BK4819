@@ -358,7 +358,7 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
 	// <15>    0 ???
 	//
 	
-	const uint8_t rf[] = {7,5,4,3,2,1,3,1,1,0};
+	const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};  // {7,5,4,3,2,1,3,1,1,0};
 	
 	// <14:12> 4 RF filter bandwidth
 	//         0 = 1.7  KHz
@@ -371,7 +371,7 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
 	//         7 = 4.5  KHz
 	// if <5> == 1, RF filter bandwidth * 2
 	
-	const uint8_t wb[] = {6,4,3,2,2,1,2,1,0,0};
+	const uint8_t wb[] = {0, 0, 1, 2, 1, 2, 2, 3, 4, 6}; // {6,4,3,2,2,1,2,1,0,0};
 	
 	// <11:9>  0 RF filter bandwidth when signal is weak
 	//         0 = 1.7  KHz *WN
@@ -384,7 +384,7 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
 	//         7 = 4.5  KHz
 	// if <5> == 1, RF filter bandwidth * 2
 
-	const uint8_t af[] = {4,5,6,7,0,0,3,0,2,1};  
+	const uint8_t af[] = {1, 2, 0, 3, 0, 0, 7, 6, 5, 4}; // {4,5,6,7,0,0,3,0,2,1};  
 
 	// <8:6>   1 AFTxLPF2 filter Band Width
 	//         1 = 2.5  KHz (for 12.5k channel space) *N
@@ -396,7 +396,7 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
 	//         6 = 4.0  KHz
 	//         7 = 3.75 KHz
 
-	const uint8_t bs[] = {2,2,2,2,2,2,0,0,1,1}; 
+	const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; // {2,2,2,2,2,2,0,0,1,1}; 
 
 	// <5:4>   0 BW Mode Selection
 	//         0 = 12.5k

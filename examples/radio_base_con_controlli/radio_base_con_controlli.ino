@@ -97,7 +97,7 @@ void setup()
     Vfo[0].mute_port = PIN_MUTE1;
     Vfo[1].mute_port = PIN_MUTE2;
 
-    Vfo[VfoNum].Frequency = 27000UL * 1000;  
+    Vfo[VfoNum].Frequency = 74025UL * 1000;  
     Vfo[VfoNum].step      = 12500UL;
     Vfo[VfoNum].Sql       = 136;
     Vfo[VfoNum].Mode      = AF_FM;
@@ -107,7 +107,7 @@ void setup()
     Serial.begin(115200); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
 
-    //wdt_enable(WDTO_2S);                                        // Imposta il watchdog per 2 secondi
+    wdt_enable(WDTO_2S);                                        // Imposta il watchdog per 2 secondi
 
     beken.BK4819_SCN_select(Vfo[VfoNum].scn_port);
 
@@ -181,7 +181,12 @@ void loop()
 
       // controlla la comunicazione seriale ogni 200 ms
       if (counter % 300 == 0) sercomm(); 
+
+      // controlla la comunicazione seriale ogni 400 ms
+      if (counter % 400 == 0) checkirq(); 
     }
+
+    wdt_reset();
 }
 
 //=============================================================================================
@@ -205,22 +210,56 @@ void mute_audio ( bool stato )
 //=============================================================================================
 //
 //=============================================================================================
+unsigned long irqHighStartTime = 0;
+bool irqHighDetected = false;
+
+void checkirq(void) 
+{
+    if (digitalRead(PIN_IRQ_BEKEN) == HIGH) 
+    {
+        if (!irqHighDetected) 
+        {
+            // Segnale alto appena rilevato, registra l'inizio del tempo
+            irqHighStartTime = millis();
+            irqHighDetected = true;
+        } 
+        else 
+        {
+            // Controlla se il segnale è stato alto per più di 20 ms
+            if (millis() - irqHighStartTime > 20) 
+            {
+                beken.BK4819_Clear_Interrupt();
+                irqHighDetected = false; // Resetta il flag dopo aver gestito l'interrupt
+            }
+        }
+    } 
+    else 
+    {
+        // Se il segnale è basso, resetta il flag
+        irqHighDetected = false;
+    }
+}
+
+
+//=============================================================================================
+//
+//=============================================================================================
 void controlli ( void )
 {
   // --------------------------------------------------------- Lettura PTT
   int ValoreAn = analogRead(PIN_PTT);                     // Legge il valore dalla porta A0
- 
-  if (ValoreAn < 100 && !statoPrecedente) 
+
+  if (ValoreAn < 150 && !statoPrecedente) 
   {
                                                           // Attiva la trasmissione 
       digitalWrite(PIN_LED_TX, HIGH);                     // LED Rosso acceso
       Txon = true;
       statoPrecedente = true;
 
-      beken.BK4819_Set_Power_TX(2);                       // uscita a zero dB 0 = tx OFF 1 = min 15 = Max
+      beken.BK4819_Set_Power_TX(Vfo[VfoNum].txp);         // uscita a zero dB 0 = tx OFF 1 = min 15 = Max
       beken.BK4819_Prepare_Transmit();
   }
-  else if (ValoreAn > 500 && statoPrecedente) 
+  else if (ValoreAn > 200 && statoPrecedente) 
   {
                                                           // Disattiva la trasmissione e attiva la ricezione
       digitalWrite(PIN_LED_TX, LOW);                      // LED Rosso spento
@@ -236,14 +275,15 @@ void controlli ( void )
 
   if (currentButtonState == LOW  && lastButtonState == HIGH )
   {
+    beken.BK4819_Clear_Interrupt();
     monitor = mute;
     mute_audio(!mute);
   }
 
   //--------------------------------------------------------- aggiornamento squelch analogico
-  // update_squelch();
+  update_squelch();
   //--------------------------------------------------------- aggiornamento rfgain analogico
-  // update_rfgain();
+  update_rfgain();
 
   //--------------------------------------------------------- Aggiorna lo stato precedente del pulsante
   lastButtonState = currentButtonState;
@@ -271,7 +311,7 @@ void update_squelch()
     {
         beken.BK4819_Set_Squelch(Vfo[VfoNum].Sql, Vfo[VfoNum].Sql + 4, 0, 0, 0, 0);
         delay(5);
-        radio.send_squelch(Vfo[VfoNum].Sql, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
+        radio.send_command(COMMAND_GET_SQUELCH, Vfo[VfoNum].Sql, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
         //delay(10);
         previous_squelch_level = Vfo[VfoNum].Sql;  // Aggiorna il valore precedente
     }
@@ -295,7 +335,7 @@ void update_rfgain()
     {
         beken.BK4819_Set_AGC_Gain(AGC_MAN, Vfo[VfoNum].Gain );
         delay(5);
-        radio.send_rfgain(Vfo[VfoNum].Gain, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
+        radio.send_command(COMMAND_GET_RFGAIN, Vfo[VfoNum].Gain, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
 
         previous_gain = Vfo[VfoNum].Gain;  // Aggiorna il valore precedente
     }
@@ -355,6 +395,28 @@ void sercomm(void)
   {
     Vfo[VfoNum].Gain = radio.getGain();
     beken.BK4819_Set_AGC_Gain(AGC_MAN, Vfo[VfoNum].Gain); 
+  }
+
+  //--------------------------------------------------------- Controlla se la Bandwith e' cambiata
+  if (changedFlags & FLAG_BW_CHANGED)
+  {
+    Vfo[VfoNum].bw = radio.getBw();
+    beken.BK4819_Set_Filter_Bandwidth(Vfo[VfoNum].bw);	    // imposta BW e filtri audio
+  }
+
+  //--------------------------------------------------------- Controlla se la potenza e' cambiata
+  if (changedFlags & FLAG_TXP_CHANGED)
+  {
+    Vfo[VfoNum].txp = radio.getTxp();
+    if(Txon) beken.BK4819_Set_Power_TX(Vfo[VfoNum].txp);    // solo se e' in trasmissione
+  }
+
+
+  //--------------------------------------------------------- Controlla il pulsante monitor
+  if (changedFlags & FLAG_MONITOR_CHANGED)
+  {
+    monitor = mute;
+    mute_audio(!mute);
   }
 }
 
