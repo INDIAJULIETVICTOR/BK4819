@@ -31,6 +31,7 @@
 #include <IcomSim.h>
 #include <avr/wdt.h>
 
+
 #define PIN_PTT A0
 #define PIN_SQL A1
 #define PIN_RFGAIN A2
@@ -45,6 +46,8 @@
 #define PIN_MUTE2 A5
 
 #define PIN_PB_ENCODER 8
+#define PIN_ENCODER_S1 3
+#define PIN_ENCODER_S2 4
 
 
 // #include <SoftwareSerial.h>
@@ -83,6 +86,8 @@ BK4819 beken(10, 11, 12, 13);                                   // Passa i pin C
 //--------------------------------------------------------- Definizione librerie Icom CI-V
 IcomSim radio(Serial);                                          // usa la seriale di sistema USB
 
+long oldPosition  = -999;
+
 // #define RX_PIN 10                                            // pin usati da softwareserial
 // #define TX_PIN 11
 
@@ -106,7 +111,7 @@ void setup()
     Vfo[VfoNum].Gain      = 20;
     Vfo[VfoNum].AGC       = AGC_MAN;
 
-    Serial.begin(38400); 
+    Serial.begin(115200); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
 
     wdt_enable(WDTO_2S);                                        // Imposta il watchdog per 2 secondi
@@ -152,7 +157,7 @@ void setup()
     beken.BK4819_Set_Power_TX(0);                               // tx disabilitata        
 
   //--------------------------------------------------------- configurazione interrupt
-  attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
+  //attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
   //attachInterrupt(digitalPinToInterrupt(PIN_IRQ_BEKEN), interrupt_beken, RISING);   // Interruzione su cambiamento irq del beken
 
   update_squelch();
@@ -170,10 +175,12 @@ unsigned long prevmillis = 0;
 
 void loop() 
 {
+  check_encoder();
+
+  interrupt_beken();
+
     if(millis()>prevmillis) 
     { 
-      interrupt_beken();
-
       prevmillis = millis(); 
       ++counter;
 
@@ -327,6 +334,40 @@ void Encoder_button()
   lastButtonState = stato;
 }
 
+//=============================================================================================
+//
+//=============================================================================================
+void check_encoder()
+{
+  static int ultimoValoreA = HIGH;                  // Memorizza l'ultimo stato di PIN_S1 (fase A)
+  int valoreA = digitalRead(PIN_ENCODER_S1);        // Legge il valore attuale di PIN_S1
+  int valoreB = digitalRead(PIN_ENCODER_S2);        // Legge il valore attuale di PIN_S2
+
+  // Verifica una transizione da LOW a HIGH o da HIGH a LOW su PIN_S1
+  if (valoreA != ultimoValoreA)
+  {
+    // Solo quando PIN_S1 cambia stato si determina la direzione
+    if (valoreA == HIGH)
+    {
+      // Transizione rilevata: incrementa o decrementa in base a PIN_S2
+      if (valoreB == LOW)
+      {
+        // Rotazione in senso orario
+        Vfo[VfoNum].Frequency += Vfo[VfoNum].step;
+      }
+      else
+      {
+        // Rotazione in senso antiorario
+        Vfo[VfoNum].Frequency -= Vfo[VfoNum].step;
+      }
+
+      beken.BK4819_Set_Frequency ( Vfo[VfoNum].Frequency );
+      radio.send_frequency(Vfo[VfoNum].Frequency, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
+    }
+    // Aggiorna lo stato precedente di PIN_S1
+    ultimoValoreA = valoreA;
+  }  
+}
 
 
 //=============================================================================================
@@ -488,54 +529,6 @@ void interrupt_beken ( void )
     interrupts();
 }
 
-//=============================================================================================
-//
-//=============================================================================================
-unsigned long attesa = 0;
-
-void leggiEncoder()
-{
-    static int ultimoValoreA = LOW;           // Memorizza l'ultimo stato di PIN_S1 (fase A)
-    int valoreA = digitalRead(PIN_S1);        // Legge il valore attuale di PIN_S1
-    int valoreB = digitalRead(PIN_S2);        // Legge il valore attuale di PIN_S2
-
-    noInterrupts(); 
-    // evita aggiornamenti troppo frequenti
-    if ( (millis()-attesa) >70 )
-    {
-      // Verifica una transizione da LOW a HIGH o da HIGH a LOW su PIN_S1
-      if (valoreA != ultimoValoreA)
-      {
-          // Solo quando PIN_S1 cambia stato si determina la direzione
-          if (valoreA == HIGH)
-          {
-              // Transizione rilevata: incrementa o decrementa in base a PIN_S2
-              if (valoreB == LOW)
-              {
-                  // Rotazione in senso orario
-                  Vfo[VfoNum].Frequency += Vfo[VfoNum].step;
-              }
-              else
-              {
-                  // Rotazione in senso antiorario
-                  Vfo[VfoNum].Frequency -= Vfo[VfoNum].step;
-              }
-
-              beken.BK4819_Set_Frequency ( Vfo[VfoNum].Frequency );
-              delay(10);
-              radio.send_frequency(Vfo[VfoNum].Frequency, CIV_ADDRESS_RADIO, CIV_ADDRESS_COMPUTER);
-              attesa = millis();
-          }
-      }
-
-      // Aggiorna lo stato precedente di PIN_S1
-      ultimoValoreA = valoreA;
-    }  
-    interrupts();
-
-
-    //radio.Debug_Print("%ld\r\n",Vfo[VfoNum].Frequency);
-}
 
 
 
