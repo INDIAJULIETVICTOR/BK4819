@@ -26,6 +26,8 @@
 #define BK4819_H
 
 #include <Arduino.h>
+#include <ArduinoQueue.h> 
+
 #include <SPI.h>
 
 
@@ -253,6 +255,16 @@ enum {
 #define BK4819_REG_70_MASK_ENABLE_TONE2		(0x01U << BK4819_REG_70_SHIFT_ENABLE_TONE2)
 #define BK4819_REG_70_MASK_TONE2_TUNING_GAIN	(0x7FU << BK4819_REG_70_SHIFT_TONE2_TUNING_GAIN)
 
+#define QUEUE_MAX_SIZE 10
+
+// ----------------------------------------------------
+// Struttura per memorizzare i comandi di scrittura nei registri
+struct RegisterWriteCommand 
+{
+    uint16_t address;
+    uint16_t data;
+};
+
 // ----------------------------------------------------
 enum BK4819_Filter_status_t
 {
@@ -386,7 +398,7 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 		public:
 			BK4819(int csPin, int MosiPin, int MisoPin, int sckPin);
 			
-			BK4819_IRQType_t BK4819_Check_Irq_type( void );
+			BK4819_IRQType_t BK4819_Check_Irq_type( bool direct );
 			
 			uint16_t BK4819_Read_Register(uint16_t address);  
 			
@@ -394,45 +406,48 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			
 			void BK4819_SCN_select( uint8_t csPin );
 			
-			void BK4819_Write_Register(uint16_t address, uint16_t data);
+			void BK4819_Write_Register(uint16_t address, uint16_t data, bool direct);
 			void BK4819_Init();  // Dichiara qui la funzione
-			void BK4819_RX_TurnOff(void);
-			void BK4819_RX_TurnOn(void);
-			void BK4819_Sleep(void);
+			void BK4819_RX_TurnOff(bool direct);
+			void BK4819_RX_TurnOn(bool direct);
+			void BK4819_Sleep(bool direct);
 			void BK4819_SoftReset();
 
-			void BK4819_Clear_Interrupt( void );
-			void BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask);
-			void BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwidth);
+			void BK4819_Clear_Interrupt( bool direct);
+			void BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask, bool direct);
+			void BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwidth, bool direct);
 			
-			void BK4819_Init_AGC();
-			void BK4819_Set_AF(AF_Type_t af);
-			void BK4819_Set_Frequency(uint32_t Frequency);
-			void BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value);
-			void BK4819_Set_Xtal(BK4819_Xtal_t mode);
-			void BK4819_RF_Set_Agc(u8 mode);
-			void BK4819_Set_AFC(uint8_t value);
-			void BK4819_Set_Squelch(uint8_t Squelch_Open_RSSI,uint8_t Squelch_Close_RSSI,uint8_t Squelch_Open_Noise,uint8_t Squelch_Close_Noise,uint8_t Squelch_Close_Glitch,uint8_t Squelch_Open_Glitch );
-			void BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode );
+			void BK4819_Init_AGC(bool direct);
+			void BK4819_Set_AF(AF_Type_t af, bool direct);
+			void BK4819_Set_Frequency(uint32_t Frequency, bool direct);
+			void BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value, bool direct);
+			void BK4819_Set_Xtal(BK4819_Xtal_t mode, bool direct);
+			void BK4819_RF_Set_Agc(u8 mode, bool direct);
+			void BK4819_Set_AFC(uint8_t value, bool direct);
+			void BK4819_Set_Squelch(uint8_t Squelch_Open_RSSI,uint8_t Squelch_Close_RSSI,uint8_t Squelch_Open_Noise,uint8_t Squelch_Close_Noise,uint8_t Squelch_Close_Glitch,uint8_t Squelch_Open_Glitch, bool direct);
+			void BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode, bool direct);
 			
-			void BK4819_Disable_DTMF(void);
+			void BK4819_Disable_DTMF(bool direct);
 			
-			void BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING );
-			void BK4819_Set_Power_TX(uint8_t level);
-			void BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable);
-			void BK4819_Enable_TXLink(void);
-			void BK4819_Disable_TXLink(void);
-			void BK4819_Mute_Tx(bool mute);
-			void BK4819_Set_TxDeviation ( uint8_t value );
+			void BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING, bool direct);
+			void BK4819_Set_Power_TX(uint8_t level, bool direct);
+			void BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable, bool direct);
+			void BK4819_Enable_TXLink(bool direct);
+			void BK4819_Disable_TXLink(bool direct);
+			void BK4819_Mute_Tx(bool mute, bool direct);
+			void BK4819_Set_TxDeviation ( uint8_t value, bool direct);
 			
-			void BK4819_Prepare_Transmit(void);
-			void BK4819_TxOn(void);
+			void BK4819_Prepare_Transmit(bool direct);
+			void BK4819_TxOn(bool direct);
+			
+			void BK4819_processRegisterWriteQueue(void);
 
 		private:
 			int _csPin;
 			int _MosiPin;
 			int _MisoPin;
 			int _sckPin;
+			bool spiInUse;
 	};
 
 #endif

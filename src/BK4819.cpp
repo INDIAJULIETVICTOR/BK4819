@@ -63,11 +63,30 @@ const t_gain_table gain_table[] =
 
 t_Vfo_Data VfoD;
 
+volatile bool spiInUse = false;
+
+
+// Coda per i comandi di scrittura
+ArduinoQueue<RegisterWriteCommand> registerWriteQueue(QUEUE_MAX_SIZE);
+
+
+
+
+// ---------------------------------------------------- Funzione per processare la coda di scrittura, da chiamare nel loop principale
+void BK4819::BK4819_processRegisterWriteQueue() 
+{
+    if (spiInUse || registerWriteQueue.isEmpty()) return;
+    
+    // Rimuove l'elemento dalla coda
+    RegisterWriteCommand cmd = registerWriteQueue.dequeue();
+    
+    // Esegue la scrittura nel registro
+    BK4819_Write_Register(cmd.address, cmd.data, true);
+}
+
 // ******************************************************************************************************************************
 //
 // ******************************************************************************************************************************
-
-volatile bool spiInUse = false;
 
 // ---------------------------------------------------- Configurazione Libreria
 BK4819::BK4819(int csPin, int MosiPin, int MisoPin, int sckPin) 
@@ -89,6 +108,8 @@ BK4819::BK4819(int csPin, int MosiPin, int MisoPin, int sckPin)
     SPI.setClockDivider(SPI_CLOCK_DIV64); 		// Imposta la velocità SPI 250 Khz ( non aumentare la velocita' )
 }
 
+
+// ---------------------------------------------------- Seleziona Chip Enable
 void BK4819::BK4819_SCN_select( uint8_t csPin )
 {
 	_csPin = csPin;
@@ -97,42 +118,53 @@ void BK4819::BK4819_SCN_select( uint8_t csPin )
 }
 
 
+
 // ---------------------------------------------------- Scrive in un registro del BK4819
-void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data) 
+void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct) 
 {
-												// Definisci il timeout in microsecondi
-    const unsigned long timeout = 100000UL; 	// 10 millisecondi
-    unsigned long startTime = micros();
-												// Attendi il lock con timeout
-    while (spiInUse) 
-	{
-        if ((micros() - startTime) > timeout) 
+	if ( direct )
+	{												// Definisci il timeout in microsecondi
+		const unsigned long timeout = 100000UL; 	// 10 millisecondi
+		unsigned long startTime = micros();
+													// Attendi il lock con timeout
+		while (spiInUse) 
 		{
-			spiInUse = false;					// Rilascia il lock
-            return;  							// Esci dalla funzione per evitare stallo
-        }
-    }
-	
-    spiInUse = true;							// Prendi il lock
-	
-    pinMode(_MosiPin, OUTPUT);  		
-	pinMode(_sckPin, OUTPUT);
-												// 1. Abbassa manualmente il clock prima di abbassare il CS
-    digitalWrite(_sckPin, LOW);
-												// 2. Ora abbassa il CS per iniziare la comunicazione
-    digitalWrite(_csPin, LOW);      			// Seleziona il chip
-	delayMicroseconds(3); 
-												// 3. Invia i dati SPI (usando modalità 0)
-	SPI.setDataMode(SPI_MODE0);
-	
-    SPI.transfer(address & 0x7F);   			// Bit di scrittura
-    SPI.transfer16(data);           			// Scrivi i 16 bit
-												// 4. Invia il fine della comunicazione
-    digitalWrite(_csPin, HIGH);     			// Rilascia il chip
-    pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura
-	pinMode(_sckPin, INPUT);  					// Imposta il clock alto inizialmente (modalità 3)
-	
-    spiInUse = false;							// Rilascia il lock
+			if ((micros() - startTime) > timeout) 
+			{
+				spiInUse = false;					// Rilascia il lock
+				return;  							// Esci dalla funzione per evitare stallo
+			}
+		}
+		
+		spiInUse = true;							// Prendi il lock
+		
+		pinMode(_MosiPin, OUTPUT);  		
+		pinMode(_sckPin, OUTPUT);
+													// 1. Abbassa manualmente il clock prima di abbassare il CS
+		digitalWrite(_sckPin, LOW);
+													// 2. Ora abbassa il CS per iniziare la comunicazione
+		digitalWrite(_csPin, LOW);      			// Seleziona il chip
+		delayMicroseconds(3); 
+													// 3. Invia i dati SPI (usando modalità 0)
+		SPI.setDataMode(SPI_MODE0);
+		
+		SPI.transfer(address & 0x7F);   			// Bit di scrittura
+		SPI.transfer16(data);           			// Scrivi i 16 bit
+													// 4. Invia il fine della comunicazione
+		digitalWrite(_csPin, HIGH);     			// Rilascia il chip
+		pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura
+		pinMode(_sckPin, INPUT);  					// Imposta il clock alto inizialmente (modalità 3)
+		
+		spiInUse = false;							// Rilascia il lock
+	}
+	else
+	{
+		if (registerWriteQueue.isFull()) return;
+
+		RegisterWriteCommand cmd = {address, data};
+		registerWriteQueue.enqueue(cmd);
+		return true;
+	}
 }
 
 
@@ -186,9 +218,9 @@ void BK4819::BK4819_Init()
 {
     BK4819_SoftReset();							// Resetta il Beken
 	
-	BK4819_Write_Register(0x30, 0);				// Spegne il beken
+	BK4819_Write_Register(0x30, 0, true);		// Spegne il beken
 	
-	BK4819_Write_Register(0x33, 0xEFFF);  		// Configurazione GPIO subito dopo il reset per non avere uscite esposte.
+	BK4819_Write_Register(0x33, 0xEFFF, false); // Configurazione GPIO subito dopo il reset per non avere uscite esposte.
 												// <15>	?		1: Output disable / 0: Output enable
 												// <14> GPIO6	1
 												// <13> GPIO5	1
@@ -221,41 +253,41 @@ void BK4819::BK4819_Init()
 												// 8: DTMF/5 Tone symbol received flag
 												// 9: CTCSS/CDCSS digital wave
 	
-	BK4819_Write_Register(0x35,0x0001);			// <15:12>	-----									
+	BK4819_Write_Register(0x35,0x0001, true);	// <15:12>	-----									
 	                                            // <11:08>	GPIO6
 	                                            // <07:04>	GPIO5
 	                                            // <03:00>	GPIO4
 						
-	BK4819_Write_Register(0x34,0x0000);			// <15:12>	GPIO3
+	BK4819_Write_Register(0x34,0x0000, true);	// <15:12>	GPIO3
 												// <11:08>	GPIO2
 												// <07:04>	GPIO1
 												// <03:00>	GPIO0
 	
-	BK4819_Set_AF(AF_MUTE);						// Silenzia l'audio
+	BK4819_Set_AF(AF_MUTE, true);				// Silenzia l'audio
 	
-	BK4819_RF_Set_Agc(0);						// Inizializza l'AGC (Automatic Gain Control)
-	BK4819_Set_AGC_Gain(AGC_MAN, 0);			// azzera il gain 
-	BK4819_Set_Squelch (255,255, 127,127, 127, 127); // setup Squelch al massimo valore
+	BK4819_RF_Set_Agc(0, true);					// Inizializza l'AGC (Automatic Gain Control)
+	BK4819_Set_AGC_Gain(AGC_MAN, 0, true);		// azzera il gain 
+	BK4819_Set_Squelch (255,255, 127,127, 127, 127, true); // setup Squelch al massimo valore
 	
-	BK4819_Clear_Interrupt();					// cancella gli eventuali interrupt pendenti
+	BK4819_Clear_Interrupt(true);				// cancella gli eventuali interrupt pendenti
 	
-	BK4819_Set_Xtal(XTAL26M);
+	BK4819_Set_Xtal(XTAL26M, true);
 
-	BK4819_Write_Register(0x36, 0x0000);  		// Registro 36: configurazione dell'amplificatore di potenza (PA) Bias = 0V  0x0000 = spegne trasmettitore
+	BK4819_Write_Register(0x36, 0x0000, true);  // Registro 36: configurazione dell'amplificatore di potenza (PA) Bias = 0V  0x0000 = spegne trasmettitore
 												// <15:8>	Bias output 0-3.2V
 												// <7>		Enable PA Ctl out
 												// <5:3>	Gain 1	 0-7
 												// <2:0>	Gain 2	 0-7
 	
-	BK4819_Write_Register(0x3E, 0xA037);		// Band selection threshold ( VCO max. frequency (Hz)/96/640 )
+	BK4819_Write_Register(0x3E, 0xA037, true);	// Band selection threshold ( VCO max. frequency (Hz)/96/640 )
 	
 												// Configurazione del livello AF (Audio Frequency)
     BK4819_Write_Register(0x48, (11u << 12)|    // ??? 0..15 (riservato)
                                 (0u << 10) |    // AF Rx Gain-1 (0 = 0dB)
                                 (40u << 4) |    // AF Rx Gain-2 (-26dB ~ 5.5dB, 0.5dB/step)
-                                (10u << 0));    // AF DAC Gain (2dB/step, 15 = max, 0 = min)
+                                (10u << 0), true);    // AF DAC Gain (2dB/step, 15 = max, 0 = min)
 								
-	BK4819_Write_Register(0x49, 0x2A38);		// RF AGC threshold
+	BK4819_Write_Register(0x49, 0x2A38, true);	// RF AGC threshold
 												// <15:14>  High/Low Lo selection:
 												// 			0X: Auto High/Low Lo
 												// 			10: Low Lo
@@ -263,9 +295,9 @@ void BK4819::BK4819_Init()
 												// <13:7>	AGC high threshold, 1 dB/LSB
 												// <6:0>	RF AGC low threshold, 1 dB/LSB
 
-    BK4819_Write_Register(0x1F, 0x5454);  		// Configurazione del registro RF 
+    BK4819_Write_Register(0x1F, 0x5454, true);  // Configurazione del registro RF 
 
-	BK4819_Set_AFC(2);							// AFC abilitato
+	BK4819_Set_AFC(2, true);					// AFC abilitato
 	
 	
 	// BK4819_Write_Register(0x1A, 0x7850);
@@ -296,20 +328,20 @@ void BK4819::BK4819_Init()
 // ---------------------------------------------------- Soft Reset
 void BK4819::BK4819_SoftReset() 
 {
-    BK4819_Write_Register(0, 0x8000);  			// Chip reset
-	BK4819_Write_Register(0, 0x0000);  			// normale
+    BK4819_Write_Register(0, 0x8000, true);  			// Chip reset
+	BK4819_Write_Register(0, 0x0000, true);  			// normale
 }
 
 // ---------------------------------------------------- Spegne il modulo radio
-void BK4819::BK4819_RX_TurnOff(void)
+void BK4819::BK4819_RX_TurnOff(bool direct)
 {
-	BK4819_Write_Register(0x30, 0);
+	BK4819_Write_Register(0x30, 0, direct);
 }
 
 // ---------------------------------------------------- Accensione radio in RX
-void BK4819::BK4819_RX_TurnOn(void)
+void BK4819::BK4819_RX_TurnOn(bool direct)
 {
-	BK4819_Write_Register(0x36, 0x0000);		// spegne trasmettitore
+	BK4819_Write_Register(0x36, 0x0000, direct);		// spegne trasmettitore
 	
 	// DSP Voltage Setting = 1			1 
 	
@@ -328,10 +360,10 @@ void BK4819::BK4819_RX_TurnOn(void)
 	// Enable  XTAL						1
 	// Enable  Band Gap					1
 	//
-	BK4819_Write_Register(0x37, 0x1F0F);  	
+	BK4819_Write_Register(0x37, 0x1F0F, direct);  	
 
 	// Turn off everything
-	BK4819_Write_Register(0x30, 0);		
+	BK4819_Write_Register(0x30, 0, direct);		
 
 	// 15	Enable  VCO Calibration			1	
 	// 10:13Enable  RX Link					1111
@@ -342,13 +374,13 @@ void BK4819::BK4819_RX_TurnOn(void)
 	// 2	Disable MIC ADC					0
 	// 1	Disable TX DSP					0
 	// 0	Enable  RX DSP					1
-	//		                                           15     10 9 8    4 3 2 1 0
-	BK4819_Write_Register(0x30, 0b1011111111110001); // 1 0 1111 1 1 1111 0 0 0 1
+	//		                                           			   15     10 9 8    4 3 2 1 0
+	BK4819_Write_Register(0x30, 0b1011111111110001, direct); // 1 0 1111 1 1 1111 0 0 0 1
 }
 
 
 // ---------------------------------------------------- Set filtri di banda
-void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwidth) 
+void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwidth,bool direct) 
 {
     const uint8_t bw = bandwidth;
 
@@ -420,12 +452,12 @@ void BK4819::BK4819_Set_Filter_Bandwidth(const BK4819_Filter_Bandwidth_t bandwid
                          (0u 	 <<  2) |     //  0 Gain after FM Demodulation
                          (0u 	 <<  0);      //  0
 
-    BK4819_Write_Register(0x43, val);
+    BK4819_Write_Register(0x43, val, direct);
 }
 
 
 // ---------------------------------------------------- Imposta il registro AF
-void BK4819::BK4819_Set_AF(AF_Type_t af) 
+void BK4819::BK4819_Set_AF(AF_Type_t af, bool direct) 
 {
 	VfoD.AFmode = af;
 	
@@ -464,17 +496,17 @@ void BK4819::BK4819_Set_AF(AF_Type_t af)
 					// 1: Bypass all AF TX filter
 					// 0: Normal	
 
-    BK4819_Write_Register(0x47, 0x6040 | (af << 8));			// Scrive nel registro 47 per configurare la modalità AF
+    BK4819_Write_Register(0x47, 0x6040 | (af << 8), direct);			// Scrive nel registro 47 per configurare la modalità AF
 }
 
 // ---------------------------------------------------- Cancella Interrupt con timeout
-void BK4819::BK4819_Clear_Interrupt(void)
+void BK4819::BK4819_Clear_Interrupt(bool direct)
 {
     uint16_t timeout_counter = 100;  							// Definisci un numero massimo di tentativi
 
     while (timeout_counter--) 									// Diminuisci il contatore a ogni iterazione
     {
-        BK4819_Write_Register(0x02, 0); 						// Cancella gli interrupt pendenti
+        BK4819_Write_Register(0x02, 0, direct); 				// Cancella gli interrupt pendenti
 
         const uint16_t Status = BK4819_Read_Register(0x0C); 	// Registro Interrupt
         if ((Status & 1u) == 0) break; 							// Se non ci sono più interrupt, esci dal ciclo
@@ -487,67 +519,67 @@ void BK4819::BK4819_Clear_Interrupt(void)
 
 
 // ---------------------------------------------------- Interrupt set
-void BK4819::BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask)
+void BK4819::BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask, bool direct)
 {
-	BK4819_Clear_Interrupt();
-	BK4819_Write_Register(0x3F, 0 | InterruptMask); 			// Registro Mascheramento interrupt
+	BK4819_Clear_Interrupt(direct);
+	BK4819_Write_Register(0x3F, 0 | InterruptMask, direct); 			// Registro Mascheramento interrupt
 }	
 
 // ---------------------------------------------------- Check Stato Interrupt
-BK4819_IRQType_t BK4819::BK4819_Check_Irq_type( void )
+BK4819_IRQType_t BK4819::BK4819_Check_Irq_type( bool direct )
 {
-	BK4819_Write_Register(0x02, 0);								// Cancella gli interrupt pendenti
-	const BK4819_IRQType_t irq = BK4819_Read_Register(0x02);	// legge gli interrupt in atto
+	BK4819_Write_Register(0x02, 0, direct);								// Cancella gli interrupt pendenti
+	const BK4819_IRQType_t irq = BK4819_Read_Register(0x02);			// legge gli interrupt in atto
 	return irq;
 }	
 
 // ---------------------------------------------------- Imposta Frequenza
-void BK4819::BK4819_Set_Frequency(uint32_t Frequency)
+void BK4819::BK4819_Set_Frequency(uint32_t Frequency, bool direct)
 {
 	const uint32_t Freq = Frequency/10;
 
-	BK4819_Write_Register(0x38, (Freq >>  0) & 0xFFFF);
-	BK4819_Write_Register(0x39, (Freq >> 16) & 0xFFFF);
+	BK4819_Write_Register(0x38, (Freq >>  0) & 0xFFFF, direct);
+	BK4819_Write_Register(0x39, (Freq >> 16) & 0xFFFF, direct);
 
-	BK4819_Write_Register(0x30, 0);
-	BK4819_Write_Register(0x30, 0b1011111111110001); 
+	BK4819_Write_Register(0x30, 0, direct);
+	BK4819_Write_Register(0x30, 0b1011111111110001, direct); 
 }
 
 // ---------------------------------------------------- Set registri AGC
-void BK4819::BK4819_RF_Set_Agc(u8 mode)
+void BK4819::BK4819_RF_Set_Agc(u8 mode, bool direct)
 {
 	switch(mode)
 	{
 		case 0:
-			BK4819_Write_Register(0x13,0x03BE);
-			BK4819_Write_Register(0x12,0x037B);
-			BK4819_Write_Register(0x11,0x027B);
-			BK4819_Write_Register(0x10,0x007A);
-			BK4819_Write_Register(0x14,0x0019);
+			BK4819_Write_Register(0x13,0x03BE, direct);
+			BK4819_Write_Register(0x12,0x037B, direct);
+			BK4819_Write_Register(0x11,0x027B, direct);
+			BK4819_Write_Register(0x10,0x007A, direct);
+			BK4819_Write_Register(0x14,0x0019, direct);
 			
-			BK4819_Write_Register(0x49,0x2A38);
-			BK4819_Write_Register(0x7B,0x8420);			// <15:0>	RSSI Table
-			BK4819_Write_Register(0x7C,0x8000);			// <15:0>	RSSI Table
+			BK4819_Write_Register(0x49,0x2A38, direct);
+			BK4819_Write_Register(0x7B,0x8420, direct);			// <15:0>	RSSI Table
+			BK4819_Write_Register(0x7C,0x8000, direct);			// <15:0>	RSSI Table
 			break;
 		
 		case 1:
-			BK4819_Write_Register(0x13,0x03BE);
-			BK4819_Write_Register(0x12,0x0B7C);
-			BK4819_Write_Register(0x11,0x035B);
-			BK4819_Write_Register(0x10,0x031A);
-			BK4819_Write_Register(0x14,0x0258);
+			BK4819_Write_Register(0x13,0x03BE, direct);
+			BK4819_Write_Register(0x12,0x0B7C, direct);
+			BK4819_Write_Register(0x11,0x035B, direct);
+			BK4819_Write_Register(0x10,0x031A, direct);
+			BK4819_Write_Register(0x14,0x0258, direct);
 			
-			BK4819_Write_Register(0x49,0x2A38);
-			BK4819_Write_Register(0x7B,0x318C);			// <15:0>	RSSI Table
-			BK4819_Write_Register(0x7C,0x595E);			// <15:0>	RSSI Table
-			BK4819_Write_Register(0x20,0x8DEF); 
+			BK4819_Write_Register(0x49,0x2A38, direct);
+			BK4819_Write_Register(0x7B,0x318C, direct);			// <15:0>	RSSI Table
+			BK4819_Write_Register(0x7C,0x595E, direct);			// <15:0>	RSSI Table
+			BK4819_Write_Register(0x20,0x8DEF, direct); 
 			//for(int i=0;i<8;i++) BK4819_Write_Register(0x06,(u16) ((i&7)<<13 | 0x0E<<7 | 0x41));
 			break;
 	}                                                                                                                                                                                                                                                                                                 
 }
 
 // ---------------------------------------------------- Imposta Gain e livello
-void  BK4819::BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value)
+void  BK4819::BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value, bool direct)
 {
 
     // UART_printf("reg = %04x, %d \n",Reg_Value, fix);
@@ -574,7 +606,7 @@ void  BK4819::BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value)
 								(gAGCfix << 15) | 
 								(gAGCidx << 12) | 
 								(5u << 3)       | 
-								(6u << 0));
+								(6u << 0), direct);
 
 
 	// REG_13
@@ -616,20 +648,20 @@ void  BK4819::BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value)
 	//         0 = -33dB
 	//
 	
-	BK4819_Write_Register(0x12, (3u << 8) | (3u << 5) | (3u << 3) | (4u << 0));  // 000000 11 011 11 100  0x037C =  3 3 3 4
-	BK4819_Write_Register(0x11, (2u << 8) | (3u << 5) | (3u << 3) | (3u << 0));  // 000000 10 011 11 011  0x027B =  2 3 3 3
-	BK4819_Write_Register(0x10, (0u << 8) | (3u << 5) | (3u << 3) | (2u << 0));  // 000000 00 011 11 010  0x007A =  0 3 3 2
-	BK4819_Write_Register(0x14, (0u << 8) | (0u << 5) | (3u << 3) | (1u << 0));  // 000000 00 000 11 000  0x0019 =  0 0 3 1	
+	BK4819_Write_Register(0x12, (3u << 8) | (3u << 5) | (3u << 3) | (4u << 0), direct);  // 000000 11 011 11 100  0x037C =  3 3 3 4
+	BK4819_Write_Register(0x11, (2u << 8) | (3u << 5) | (3u << 3) | (3u << 0), direct);  // 000000 10 011 11 011  0x027B =  2 3 3 3
+	BK4819_Write_Register(0x10, (0u << 8) | (3u << 5) | (3u << 3) | (2u << 0), direct);  // 000000 00 011 11 010  0x007A =  0 3 3 2
+	BK4819_Write_Register(0x14, (0u << 8) | (0u << 5) | (3u << 3) | (1u << 0), direct);  // 000000 00 000 11 000  0x0019 =  0 0 3 1	
 
 	if(gAGCfix)
 	{
-		BK4819_Write_Register(0x13, gain_table[Value].reg_val );
-		BK4819_Write_Register(0x49, (0 << 14) | (50 << 7) | (15 << 0)); 
+		BK4819_Write_Register(0x13, gain_table[Value].reg_val, direct );
+		BK4819_Write_Register(0x49, (0 << 14) | (50 << 7) | (15 << 0), direct); 
 	}
 	else
 	{
-		BK4819_Write_Register(0x13, 0x295);
-		BK4819_Write_Register(0x49, (0 << 14) | (84 << 7) | (56 << 0));
+		BK4819_Write_Register(0x13, 0x295, direct);
+		BK4819_Write_Register(0x49, (0 << 14) | (84 << 7) | (56 << 0), direct);
 	}
 
 	// BK4819_Write_Register(BK4819_REG_49, 0x2A38);
@@ -655,7 +687,7 @@ void  BK4819::BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value)
 }
 
 // ---------------------------------------------------- Imposta correzioni frequenza clock 
-void BK4819::BK4819_Set_Xtal(BK4819_Xtal_t mode)
+void BK4819::BK4819_Set_Xtal(BK4819_Xtal_t mode, bool direct)
 {
 	switch(mode)
 	{
@@ -664,45 +696,45 @@ void BK4819::BK4819_Set_Xtal(BK4819_Xtal_t mode)
 			
 		case XTAL13M:
 			// BK4819_Write_Register(0x40,REG_40 | DEVIATION); //DEVIATION=0x5D0 for example
-			BK4819_Write_Register(0x41,0x81C1);                    
-    		BK4819_Write_Register(0x3B,0xAC40);
-    		BK4819_Write_Register(0x3C,0x2708); 
-    		BK4819_Write_Register(0x3D,0x3555);		// registro IF
+			BK4819_Write_Register(0x41,0x81C1, direct);                    
+    		BK4819_Write_Register(0x3B,0xAC40, direct);
+    		BK4819_Write_Register(0x3C,0x2708, direct); 
+    		BK4819_Write_Register(0x3D,0x3555, direct);		// registro IF
 			break;
 			
 		case XTAL19M2:
 			// BK4819_Write_Register(0x40,REG_40 | DEVIATION); //DEVIATION=0x53A for example
-			BK4819_Write_Register(0x41,0x81C2);                    
-    		BK4819_Write_Register(0x3B,0x9800);
-    		BK4819_Write_Register(0x3C,0x3A48); 
-    		BK4819_Write_Register(0x3D,0x2E39);		// registro IF
+			BK4819_Write_Register(0x41,0x81C2, direct);                    
+    		BK4819_Write_Register(0x3B,0x9800, direct);
+    		BK4819_Write_Register(0x3C,0x3A48, direct); 
+    		BK4819_Write_Register(0x3D,0x2E39, direct);		// registro IF
 			break;
 			
 		case XTAL12M8:
 			// BK4819_Write_Register(0x40,REG_40 | DEVIATION); //DEVIATION=0x5D0 for example
-			BK4819_Write_Register(0x41,0x81C1);                    
-    		BK4819_Write_Register(0x3B,0x1000);
-    		BK4819_Write_Register(0x3C,0x2708); 
-    		BK4819_Write_Register(0x3D,0x3555);		// registro IF
+			BK4819_Write_Register(0x41,0x81C1, direct);                    
+    		BK4819_Write_Register(0x3B,0x1000, direct);
+    		BK4819_Write_Register(0x3C,0x2708, direct); 
+    		BK4819_Write_Register(0x3D,0x3555, direct);		// registro IF
 			break;
 			
 		case XTAL25M6:
-    		BK4819_Write_Register(0x3B,0x2000);
-    		BK4819_Write_Register(0x3C,0x4E88); 
+    		BK4819_Write_Register(0x3B,0x2000, direct);
+    		BK4819_Write_Register(0x3C,0x4E88, direct); 
 			break;
 			
 		case XTAL38M4:
 			// BK4819_Write_Register(0x40,REG_40 | DEVIATION); //DEVIATION=0x43A for example
-			BK4819_Write_Register(0x41,0x81C5);                    
-    		BK4819_Write_Register(0x3B,0x3000);
-    		BK4819_Write_Register(0x3C,0x75C8); 
-    		BK4819_Write_Register(0x3D,0x261C);		// registro IF
+			BK4819_Write_Register(0x41,0x81C5, direct);                    
+    		BK4819_Write_Register(0x3B,0x3000, direct);
+    		BK4819_Write_Register(0x3C,0x75C8, direct); 
+    		BK4819_Write_Register(0x3D,0x261C, direct);		// registro IF
 			break;
 	}
 }
 
 // ---------------------------------------------------- Set Automatic Frequency control
-void BK4819::BK4819_Set_AFC(uint8_t value)
+void BK4819::BK4819_Set_AFC(uint8_t value, bool direct)
 {
 	// -----------------misurati con Wide standard
 	// valore 0 = 26 K
@@ -713,14 +745,14 @@ void BK4819::BK4819_Set_AFC(uint8_t value)
 	{ 
 		case 0:
 			BK4819_Write_Register(0x73, 0u  |
-								 (7 <<  11) |     				//  0 AFC Max / 111 Min
-								 (1 <<  4));      				//  1 disable / 0 enable
+								 (7 <<  11) |     						//  0 AFC Max / 111 Min
+								 (1 <<  4), direct);      				//  1 disable / 0 enable
             break; 															
 	
 		default:
 			BK4819_Write_Register(0x73, 0u  |
-							     (((8-value) & 7) <<  11) |     //  0 AFC Max / 111 Min
-							     (0             <<  4));      	//  1 disable / 0 enable
+							     (((8-value) & 7) <<  11) |     		//  0 AFC Max / 111 Min
+							     (0               <<  4), direct);      //  1 disable / 0 enable
 			break;
 	}
 }
@@ -733,7 +765,8 @@ void BK4819::BK4819_Set_Squelch
 	uint8_t Squelch_Open_Noise,
 	uint8_t Squelch_Close_Noise,
 	uint8_t Squelch_Close_Glitch,
-	uint8_t Squelch_Open_Glitch )
+	uint8_t Squelch_Open_Glitch,
+	bool direct	)
 {
 	
 	// REG_70
@@ -752,13 +785,13 @@ void BK4819::BK4819_Set_Squelch
 	// <6:0>  0 TONE2/FSK tuning gain
 	//        0 ~ 127
 	//
-	BK4819_Write_Register(0x70, 0);
+	BK4819_Write_Register(0x70, 0, direct);
 
 	// Glitch threshold for Squelch = close
 	//
 	// 0 ~ 255
 	//
-	BK4819_Write_Register(0x4D, 0xA000 | Squelch_Close_Glitch);		
+	BK4819_Write_Register(0x4D, 0xA000 | Squelch_Close_Glitch, direct);		
 
 	// REG_4E
 	//
@@ -779,7 +812,7 @@ void BK4819::BK4819_Set_Squelch
 						 (1u << 14) |       //  1 ???
 						 (5U << 11) |       // *5  squelch = open  delay .. 0 ~ 7		
 		                 (6u <<  9) |       // *3  squelch = close delay .. 0 ~ 7		
-		                  Squelch_Open_Glitch);  //  0 ~ 255
+		                  Squelch_Open_Glitch, direct);  //  0 ~ 255
 
 	// REG_4F
 	//
@@ -791,7 +824,7 @@ void BK4819::BK4819_Set_Squelch
 	// <6:0>  46 Ex-noise threshold for Squelch = open
 	//        0 ~ 127
 	//
-	BK4819_Write_Register(0x4F, ((uint16_t)Squelch_Close_Noise << 8) | Squelch_Open_Noise);
+	BK4819_Write_Register(0x4F, ((uint16_t)Squelch_Close_Noise << 8) | Squelch_Open_Noise, direct);
 
 	// REG_78
 	//
@@ -799,19 +832,19 @@ void BK4819::BK4819_Set_Squelch
 	//
 	// <7:0>  70 RSSI threshold for Squelch = close   0.5dB/step
 	//
-	BK4819_Write_Register(0x78, ((uint16_t)Squelch_Open_RSSI   << 8) | Squelch_Close_RSSI);
+	BK4819_Write_Register(0x78, ((uint16_t)Squelch_Open_RSSI   << 8) | Squelch_Close_RSSI, direct);
 
 }
 
 // ---------------------------------------------------- Squelch mode set
-void BK4819::BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode )
+void BK4819::BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode , bool direct )
 {
 	// 0x88/0xA8: RSSI + noise + Glitch
 	// 0xaa: 	  RSSI + Glitch
 	// 0xcc: 	  RSSI + noise
 	// 0xFF:      RSSI
 	
-	BK4819_Write_Register(0x77, 0 | (mode << 8) | 0xFF);	
+	BK4819_Write_Register(0x77, 0 | (mode << 8) | 0xFF, direct);	
 }	
 
 
@@ -825,9 +858,9 @@ int16_t BK4819::BK4819_Get_RSSI (void)
 
 
 // ---------------------------------------------------- Modo Sleep
-void BK4819::BK4819_Sleep(void)
+void BK4819::BK4819_Sleep(bool direct)
 {
-	BK4819_Write_Register(0x30, 0);
+	BK4819_Write_Register(0x30, 0, direct);
 	
 	// DSP Voltage Setting = 1			1 
 	
@@ -846,11 +879,11 @@ void BK4819::BK4819_Sleep(void)
 	// Enable  XTAL						0
 	// Enable  Band Gap					0
 	//
-	BK4819_Write_Register(0x37, 0x1D00);
+	BK4819_Write_Register(0x37, 0x1D00, direct);
 }
 
 // ---------------------------------------------------- disabilita ricezione DTMF
-void BK4819::BK4819_Disable_DTMF(void)
+void BK4819::BK4819_Disable_DTMF(bool direct)
 {
 	// REG_24
 	// --------------------------------
@@ -864,12 +897,12 @@ void BK4819::BK4819_Disable_DTMF(void)
 										
     // <3:0>	0xe		Max. symbol number for SelCall detection
    
-	BK4819_Write_Register(0x24, 0);
+	BK4819_Write_Register(0x24, 0, direct);
 	
 	uint16_t InterruptMask = BK4819_Read_Register(0x3F);		// Legge registro interrupt
 	InterruptMask &= ~BK4819_REG_3F_DTMF_5TONE_FOUND;			// disabilita eventuale interrupt ricezione
 	
-	BK4819_Write_Register(0x3F, InterruptMask);					// Registro Mascheramento interrupt
+	BK4819_Write_Register(0x3F, InterruptMask, direct);			// Registro Mascheramento interrupt
 }
 
 // ******************************************************************************************************************************
@@ -877,15 +910,15 @@ void BK4819::BK4819_Disable_DTMF(void)
 // ******************************************************************************************************************************
 
 // ---------------------------------------------------- Abilita audio microfono
-void BK4819::BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING )
+void BK4819::BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING, bool direct )
 {
-	BK4819_Disable_DTMF();						// se la DTMF e' abilitata in trasmissione altera la modulazione restringendo la BW audio
+	BK4819_Disable_DTMF(direct);				// se la DTMF e' abilitata in trasmissione altera la modulazione restringendo la BW audio
 	
-	BK4819_Write_Register(0x7D, 0xE940 | (MIC_SENSITIVITY_TUNING & 0x1f));	// MIC sensitivity tuning, 0.5 dB/step
-																			// 0 	= min
-																			// 0x1F = max
+	BK4819_Write_Register(0x7D, 0xE940 | (MIC_SENSITIVITY_TUNING & 0x1f), direct);	// MIC sensitivity tuning, 0.5 dB/step
+																					// 0 	= min
+																					// 0x1F = max
 																
-	BK4819_Write_Register(0x19, 0x1041);		// Automatic MIC PGA Gain Controller 
+	BK4819_Write_Register(0x19, 0x1041, direct);// Automatic MIC PGA Gain Controller 
 												//   5432109876543210
 /* 			 			 0		   |			// 0b0001000001000001);     
 						(0u << 15) |     		// <15> MIC AGC  1 = disable  0 = enable
@@ -904,7 +937,7 @@ void BK4819::BK4819_Enable_Mic ( uint8_t MIC_SENSITIVITY_TUNING )
 										
 }
 // ---------------------------------------------------- imposta la potenza al finale	
-void BK4819::BK4819_Set_Power_TX(uint8_t level)
+void BK4819::BK4819_Set_Power_TX(uint8_t level, bool direct)
 {
     bool enable_tx = true;
     
@@ -936,11 +969,11 @@ void BK4819::BK4819_Set_Power_TX(uint8_t level)
     uint8_t gain1 = gain_matrix[level][0];
     uint8_t gain2 = gain_matrix[level][1];
 
-    BK4819_Set_Power_Amplifier(0, gain1, gain2, enable_tx);
+    BK4819_Set_Power_Amplifier(0, gain1, gain2, enable_tx, direct);
 }
 
 // ---------------------------------------------------- Abilita Finale alla trasmissione		
-void BK4819::BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable)
+void BK4819::BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8_t gain2, bool enable, bool direct)
 {
 	// REG_36 <15:8> 0 PA Bias output 0 ~ 3.2V
 	//               255 = 3.2V
@@ -962,11 +995,11 @@ void BK4819::BK4819_Set_Power_Amplifier(const uint8_t bias, uint8_t gain1, uint8
 	// const uint8_t gain = (frequency < 28000000) ? (1u << 3) | (0u << 0) : (4u << 3) | (2u << 0);
 	//const uint8_t gain = (frequency < 28000000) ? (4u << 3) | (4u << 0) : (4u << 3) | (2u << 0);
 
-	BK4819_Write_Register(0x36, (bias << 8) | (enable << 7) | (gain1 << 3) | (gain2 << 0));
+	BK4819_Write_Register(0x36, (bias << 8) | (enable << 7) | (gain1 << 3) | (gain2 << 0), direct);
 }
 
 // ---------------------------------------------------- 
-void BK4819::BK4819_Enable_TXLink(void)
+void BK4819::BK4819_Enable_TXLink(bool direct)
 {
 	BK4819_Write_Register(0x30, 0 |
 			BK4819_REG_30_ENABLE_VCO_CALIB |	// <15>
@@ -978,14 +1011,14 @@ void BK4819::BK4819_Enable_TXLink(void)
 			BK4819_REG_30_ENABLE_PA_GAIN   |	// <3>
 			BK4819_REG_30_DISABLE_MIC_ADC  |	// <2>
 			BK4819_REG_30_ENABLE_TX_DSP    |	// <1>
-			BK4819_REG_30_DISABLE_RX_DSP);		// <0>
+			BK4819_REG_30_DISABLE_RX_DSP, direct);		// <0>
 	
 }
 
 // ---------------------------------------------------- 
-void BK4819::BK4819_Disable_TXLink(void)
+void BK4819::BK4819_Disable_TXLink(bool direct)
 {
-	BK4819_Write_Register(0x30, 0xC1FE);   // 1 1 0000 0 1 1111 1 1 1 0	
+	BK4819_Write_Register(0x30, 0xC1FE, direct);   // 1 1 0000 0 1 1111 1 1 1 0	
 
 /* 	BK4819_Write_Register(0x30, 0  		   |
 			BK4819_REG_30_ENABLE_VCO_CALIB |	// <15>
@@ -1001,7 +1034,7 @@ void BK4819::BK4819_Disable_TXLink(void)
 }
 
 // ---------------------------------------------------- Deviazione trasmissione
-void BK4819::BK4819_Set_TxDeviation ( uint8_t value )
+void BK4819::BK4819_Set_TxDeviation ( uint8_t value , bool direct)
 {
 	if (value>10) return;
 	
@@ -1013,12 +1046,12 @@ void BK4819::BK4819_Set_TxDeviation ( uint8_t value )
 	//
 	// <11:0>	4D0	RF Tx Deviation Tuning (Apply for both in-band signal and sub-audio signal). 0=min; 0xFFF=max 
 	
-	if (value == 0)	BK4819_Write_Register(0x40,(2u << 12) | (mod[value] & 0xFFF));	// con zero disabilita la deviazione in trasmissione
-	else 			BK4819_Write_Register(0x40,(3u << 12) | (mod[value] & 0xFFF));	// con qualsiasi altro valore la abilita.
+	if (value == 0)	BK4819_Write_Register(0x40,(2u << 12) | (mod[value] & 0xFFF), direct);	// con zero disabilita la deviazione in trasmissione
+	else 			BK4819_Write_Register(0x40,(3u << 12) | (mod[value] & 0xFFF), direct);	// con qualsiasi altro valore la abilita.
 }
 
 // ---------------------------------------------------- Mute Audio Tx per invio toni o altro
-void BK4819::BK4819_Mute_Tx(bool mute)
+void BK4819::BK4819_Mute_Tx(bool mute, bool direct)
 {
 
 	// REG_50
@@ -1026,8 +1059,8 @@ void BK4819::BK4819_Mute_Tx(bool mute)
 	// 																					1: Mute
 	// 																					0: Normal
 
-	if(mute) BK4819_Write_Register(0x50, 0xBB20);	// mute TX
-	else 	 BK4819_Write_Register(0x50, 0x3B20);	// Un-mute TX	
+	if(mute) BK4819_Write_Register(0x50, 0xBB20, direct);	// mute TX
+	else 	 BK4819_Write_Register(0x50, 0x3B20, direct);	// Un-mute TX	
 }
 
 // ---------------------------------------------------- 
@@ -1082,16 +1115,16 @@ void BK4819_Exit_Bypass(void)
 
 
 
-void BK4819::BK4819_Prepare_Transmit(void)
+void BK4819::BK4819_Prepare_Transmit(bool direct)
 {
 	// BK4819_Exit_Bypass();
 	// BK4819_Set_Power_Amplifier(0, 2, 2, 1);
-	BK4819_Mute_Tx(false);
-	BK4819_TxOn();
+	BK4819_Mute_Tx(false, direct);
+	BK4819_TxOn(direct);
 }
 
 // ---------------------------------------------------- 
-void BK4819::BK4819_TxOn(void)
+void BK4819::BK4819_TxOn(bool direct)
 {
 	// Register 37
 	// DSP Voltage Setting = 1			1 
@@ -1111,8 +1144,8 @@ void BK4819::BK4819_TxOn(void)
 	// Enable  XTAL						1
 	// Enable  Band Gap					1
 	//
-	BK4819_Write_Register(0x37, 0x1D0F);
-	BK4819_Write_Register(0x30, 0x0000);	// Turn OFF
-	BK4819_Write_Register(0x30, 0xC1FE);	// Turn ON TX
+	BK4819_Write_Register(0x37, 0x1D0F, direct);
+	BK4819_Write_Register(0x30, 0x0000, direct);	// Turn OFF
+	BK4819_Write_Register(0x30, 0xC1FE, direct);	// Turn ON TX
 }
 
