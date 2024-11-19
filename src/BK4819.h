@@ -333,6 +333,17 @@ enum BK4819_AGC_t
 typedef enum BK4819_AGC_t BK4819_AGC_t;
 
 // ----------------------------------------------------
+enum BK4819_Mode_t
+{
+	MODE_FM = 0,
+	MODE_AM,
+	MODE_SSB,
+	MODE_CW,
+
+};
+typedef enum BK4819_Mode_t BK4819_Mode_t;
+
+// ----------------------------------------------------
 typedef struct
 {
     uint16_t reg_val;
@@ -441,6 +452,7 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			void BK4819_TxOn(bool direct);
 			
 			void BK4819_processRegisterWriteQueue(void);
+			void BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct);
 
 		private:
 			int _csPin;

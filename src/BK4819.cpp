@@ -741,6 +741,8 @@ void BK4819::BK4819_Set_AFC(uint8_t value, bool direct)
 	// valore 3 = 15 K 
 	// valore 5 = 12.6K 
 	
+	if(value >8) return;
+	
 	switch(value)
 	{ 
 		case 0:
@@ -903,6 +905,168 @@ void BK4819::BK4819_Disable_DTMF(bool direct)
 	InterruptMask &= ~BK4819_REG_3F_DTMF_5TONE_FOUND;			// disabilita eventuale interrupt ricezione
 	
 	BK4819_Write_Register(0x3F, InterruptMask, direct);			// Registro Mascheramento interrupt
+}
+
+
+// ---------------------------------------------------- Imposta tipo di modulazione
+void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct) 
+{
+	const uint8_t  dev[]={123,130,135,140,145,150,155,160,165,170};  								// impostazioni deviazione
+	
+	uint16_t 				  reg;                                                          		
+                                                                            		
+	switch(Modul)                                                                           		
+	{                                                                                       		
+		default:                                                                            		
+		return;                                                                             		
+			
+		case MODE_FM:                                                                       		
+			BK4819_Set_AF(AF_FM, direct);                                                     		
+			BK4819_Set_AFC(4, direct);					// afc enable  medium value     
+
+			BK4819_Write_Register(0x48, 0xB3A8, direct); 	
+
+			BK4819_Set_TxDeviation( dev[4]*10, direct );
+			break;
+		
+		case MODE_AM:
+			BK4819_Set_AF(AF_AM, direct);
+			BK4819_Set_AFC(2, direct);				
+
+			// REG_48 .. RX AF level
+			//
+			// <15:12> 11  ???  0 to 15
+			//
+			// <11:10> 0 AF Rx Gain-1
+			//         0 =   0dB
+			//         1 =  -6dB
+			//         2 = -12dB
+			//         3 = -18dB
+			//
+			// <9:4>   60 AF Rx Gain-2  -26dB ~ 5.5dB   0.5dB/step
+			//         63 = max
+			//          0 = mute
+			//
+			// <3:0>   15 AF DAC Gain (after Gain-1 and Gain-2) approx 2dB/step
+			//         15 = max
+			//          0 = min
+			//
+			// ------------------------------------ AF gain - original QS values
+			BK4819_Write_Register(0x48, 0xB3EF, direct);
+			
+				// (11u << 12) |     					// ??? .. 0 to 15, doesn't seem to make any difference
+				// ( 0u << 10) |    					// AF Rx Gain-1
+				// (62u <<  4) |     					// AF Rx Gain-2 (58)
+				// (15u <<  0));    					// AF DAC Gain (after Gain-1 and Gain-2) (11)
+				
+				// 5432109876543210
+				// 1011			       // 11u << 12
+				//     00			   // 0u << 10
+				//       111110        // 62u << 4
+				//             1111    // 15u << 0
+				// ----------------
+				// 1011 0011 1110 1111     // Combinazione 0xB3EF
+
+			BK4819_Set_TxDeviation( 1250, direct );
+
+			break;
+
+		case MODE_CW:			
+		case MODE_SSB:
+			// REG_47
+			// ----------------------------			
+			// Undocumented bits 0x2040
+			// <13>		AF Output Inverse Mode 1 = inverse
+			// <12>
+			// <11:8>	AFOutputSelection.
+			// 			0x0=Mute;
+			// 			0x1=Normal AF Out;
+			// 			0x2=Tone Out for Rx (Should enable Tone1 first);
+			// 			0x3=Beep Out for Tx (Should enable Tone1 first and set REG_03[9]=1 to enable AF;
+			// 			0x6=CTCSS/CDCSS Out for Rx Test;
+			//			0x8=FSK Out for Rx Test;
+			// 			Others=Reserved;
+			// <7:1>
+			// <0>		AF Tx Filter Bypass All
+
+			reg = BK4819_Read_Register(0x47);
+			reg &= ~(0b111 << 8);
+			BK4819_Write_Register(0x47, reg | (AF_DSB << 8), direct);
+
+			BK4819_Set_AFC(0, direct);							// afc disable
+			BK4819_Write_Register(0x3D, 0x2aab, direct);		// IF Register = 0x2B45 // 0x2aab valore migliore
+			
+			//12 DSP Voltage Setting = 1		1 
+			
+			//11 ANA LDO = 2.7v					0
+			//10 VCO LDO = 2.7v					1
+			// 9 RF LDO  = 2.7v					1
+			// 8 PLL LDO = 2.7v					0
+			
+			// 7 ANA LDO bypass					0
+			// 6 VCO LDO bypass					0
+			// 5 RF LDO  bypass					0
+			// 4 PLL LDO bypass					0
+			
+			// 3 Reserved bit is 1 instead of 0	1
+			// 2 Enable  DSP					1
+			// 1 Enable  XTAL					1
+			// 0 Enable  Band Gap				1
+			//
+			BK4819_Write_Register(0x37, 0x160F, direct);
+			
+			// REG_48 .. RX AF level
+			//
+			// <15:12> 0 11  ???  0 to 15
+			//
+			// <11:10> 0 0 AF Rx Gain-1
+			//           0 =   0dB
+			//           1 =  -6dB
+			//           2 = -12dB
+			//           3 = -18dB
+			//
+			// <9:4>  58 60 AF Rx Gain-2  -26dB ~ 5.5dB   0.5dB/step
+			//           63 = max
+			//           0 = mute
+			//
+			// <3:0>   8 15 AF DAC Gain (after Gain-1 and Gain-2) approx 2dB/step
+			//           15 = max
+			//           0 = min
+			//
+			// BK4819_Write_Register(BK4819_REG_48, 0b0000001111001110); // 0x3C
+	
+			BK4819_Write_Register(0x48, 0xB3EF, direct);	//  0xB3A8);     // 1011 00 111010 1000
+			
+				// (11u << 12) |     // ??? 0..15
+				// ( 0u << 10) |     // AF Rx Gain-1
+				// (62u <<  4) |     // AF Rx Gain-2 (58)
+				// (15u <<  0));     // AF DAC Gain (after Gain-1 and Gain-2) (12)
+
+				// 5432109876543210
+				// 1011  				// 11u << 12
+				// 	   00      			// 0u << 10
+				// 		 111110         // 62u (3E) << 4
+				// 		  	   1111     // 15u << 0
+				// -------------------
+				// 1011 0011 1110 1111  // Combinazione 0xB3EF
+
+			BK4819_Set_TxDeviation( 1200, direct );
+
+			// vstep = STEP_20Hz;
+			// BW = 255;
+			
+			// ------------------------------------------------------------------------------ Controlla spegne Modulo FM
+			// BK1080_Active(0);
+			break;
+	}
+
+	// ------------------------------------------------------------------------------ imposta Gain
+	//BK4819_Set_AGC_Gain(pInfo->AGC, gain_table[pInfo->AGC_Man_Level].reg_val, direct);
+	//AGC_reset(pInfo);																// necessario fare il reset qui per evitare blocchi in ricezione
+
+	// ------------------------------------------------------------------------------ imposta Banda Passante
+	//BK4819_Set_Filter_Bandwidth(pInfo->Bandwith, direct);	
+
 }
 
 // ******************************************************************************************************************************
