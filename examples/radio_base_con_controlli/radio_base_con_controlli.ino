@@ -32,7 +32,8 @@
 #include <avr/wdt.h>
 
 #define PIN_PTT A0
-#define PIN_SQL A2
+#define PIN_SQL A1
+#define PIN_RFGAIN A2
 
 #define PIN_IRQ_BEKEN 2
 #define PIN_S1 3
@@ -54,7 +55,7 @@
 //--------------------------------------------------------- Funzioni dei task
 void controlli();
 void sercomm();
-void interrupt();
+void interrupt_beken();
 void smeter();
 void check_control();
 
@@ -86,7 +87,6 @@ IcomSim radio(Serial);                                          // usa la serial
 // SoftwareSerial mySerial(RX_PIN, TX_PIN);
 // IcomSim radio(mySerial);                                     // Usa SoftwareSerial per la comunicazione seriale
 
-
 //=============================================================================================
 //
 //=============================================================================================
@@ -104,7 +104,7 @@ void setup()
     Vfo[VfoNum].Gain      = 20;
     Vfo[VfoNum].AGC       = AGC_MAN;
 
-    Serial.begin(115200); 
+    Serial.begin(38400); 
     // mySerial.begin(9600);                                    // Inizializza SoftwareSerial
 
     wdt_enable(WDTO_2S);                                        // Imposta il watchdog per 2 secondi
@@ -113,9 +113,9 @@ void setup()
 
     radio.Initialize(Vfo[VfoNum]);
 
-    pinMode(A0, INPUT_PULLUP);
-    pinMode(A1, INPUT_PULLUP);
-    pinMode(A2, INPUT_PULLUP);
+    pinMode(PIN_PTT, INPUT_PULLUP);                             // porte analogiche
+    pinMode(PIN_SQL, INPUT_PULLUP);
+    pinMode(PIN_RFGAIN, INPUT_PULLUP);
 
     pinMode(PIN_S1, INPUT);
     pinMode(PIN_S2, INPUT);
@@ -132,14 +132,14 @@ void setup()
     digitalWrite(PIN_LED_TX, LOW);                              // led TX Spento
     digitalWrite(PIN_LED_RX, LOW);                              // led RX Spento
 
-    digitalWrite(PIN_MUTE1, HIGH);                               // Mute ON
-    digitalWrite(PIN_MUTE2, HIGH);                               // Mute ON
+    digitalWrite(PIN_MUTE1, HIGH);                              // Mute ON
+    digitalWrite(PIN_MUTE2, HIGH);                              // Mute ON
 
     beken.BK4819_Init();                                        // Inizializza il dispositivo BK4819
 
     beken.BK4819_Set_AF(AF_FM);		                              // attiva demodulazione FM
-    beken.BK4819_Set_Frequency ( Vfo[VfoNum].Frequency );                   // imposta frequenza
-    beken.BK4819_Set_Filter_Bandwidth(BK4819_FILTER_BW_10k);	  // imposta BW e filtri audio
+    beken.BK4819_Set_Frequency ( Vfo[VfoNum].Frequency );       // imposta frequenza
+    beken.BK4819_Set_Filter_Bandwidth(BK4819_FILTER_BW_6k);	    // imposta BW e filtri audio
     beken.BK4819_Squelch_Mode (RSSI);                           // tipo squelch
     beken.BK4819_Set_Squelch (130,136, 127,127, 127, 127);      // setup Squelch
     beken.BK4819_IRQ_Set ( Squelch_Lost | Squelch_Found );      // definizione interrupt
@@ -151,7 +151,7 @@ void setup()
 
   //--------------------------------------------------------- configurazione interrupt
   attachInterrupt(digitalPinToInterrupt(PIN_S1), leggiEncoder, CHANGE);       // Interruzione su cambiamento su pin A
-  attachInterrupt(digitalPinToInterrupt(PIN_IRQ_BEKEN), interrupt, RISING);   // Interruzione su cambiamento irq del beken
+  //attachInterrupt(digitalPinToInterrupt(PIN_IRQ_BEKEN), interrupt_beken, RISING);   // Interruzione su cambiamento irq del beken
 
   update_squelch();
   delay(5);
@@ -170,6 +170,8 @@ void loop()
 {
     if(millis()>prevmillis) 
     { 
+      interrupt_beken();
+
       prevmillis = millis(); 
       ++counter;
 
@@ -177,15 +179,14 @@ void loop()
       if (counter % 100 == 0) controlli(); 
       
       // trasmetti lo smeter ogni 250 ms 
-      if (counter % 200 == 0) smeter(); 
+      if (counter % 300 == 0) smeter(); 
 
       // controlla la comunicazione seriale ogni 200 ms
-      if (counter % 300 == 0) sercomm(); 
+      if (counter % 200 == 0) sercomm(); 
 
       // controlla la comunicazione seriale ogni 400 ms
       if (counter % 400 == 0) checkirq(); 
     }
-
     wdt_reset();
 }
 
@@ -298,7 +299,7 @@ uint8_t previous_squelch_level = 0;  // Memorizza il valore precedente
 void update_squelch() 
 {
     // Leggi il valore attuale dello squelch dall'ingresso analogico A1
-    int analog_value = analogRead(A1);
+    int analog_value = analogRead(PIN_SQL);
 
     // Mappa il valore da 0-1023 a 0-255
     Vfo[VfoNum].Sql = map(analog_value, 0, 1023, 0, 255);
@@ -322,7 +323,7 @@ uint8_t previous_gain = 0;  // Memorizza il valore precedente
 void update_rfgain() 
 {
     // Leggi il valore attuale del RFGain dall'ingresso analogico A2
-    int analog_value = analogRead(A2);
+    int analog_value = analogRead(PIN_RFGAIN);
 
     // Mappa il valore da 0-1023 a 0-31
     Vfo[VfoNum].Gain = map(analog_value, 0, 1023, 0, 31);
@@ -434,14 +435,16 @@ void smeter( void )
 //=============================================================================================
 //
 //=============================================================================================
-void interrupt ( void )
+void interrupt_beken ( void )
 {
+    noInterrupts(); 
     const uint16_t irqtype = beken.BK4819_Check_Irq_type();
     if(!monitor)
     {
       if (irqtype & Squelch_Lost) mute_audio(false);
       if (irqtype & Squelch_Found) mute_audio(true);
     }  
+    interrupts();
 }
 
 //=============================================================================================
@@ -457,7 +460,7 @@ void leggiEncoder()
 
     noInterrupts(); 
     // evita aggiornamenti troppo frequenti
-    if ( (millis()-attesa) >20 )
+    if ( (millis()-attesa) >70 )
     {
       // Verifica una transizione da LOW a HIGH o da HIGH a LOW su PIN_S1
       if (valoreA != ultimoValoreA)

@@ -1,7 +1,7 @@
 # BK4819 Arduino Library
 
 <img src="images/board X.jpg" alt="Board X" style="display: block; margin-left: auto; margin-right: auto; width: 50%;">
-<img src="images/if radio.png" alt="Board X" style="display: block; margin-left: auto; margin-right: auto; width: 50%;">
+<img src="images/if radio.jpg" alt="Board X" style="display: block; margin-left: auto; margin-right: auto; width: 50%;">
 
 ## Description
 This is an Arduino library for interfacing with the **Beken BK4819** radio module. The library allows easy control and communication with the **BK4819 tool**, providing functions to handle various radio operations.

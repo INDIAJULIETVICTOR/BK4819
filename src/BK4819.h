@@ -25,11 +25,9 @@
 #ifndef BK4819_H
 #define BK4819_H
 
+#include <SPI.h>
 #include <Arduino.h>
 #include <ArduinoQueue.h> 
-
-#include <SPI.h>
-
 
 // Definizione dei registri principali del BK4819
 
@@ -257,6 +255,7 @@ enum {
 
 #define QUEUE_MAX_SIZE 10
 
+
 // ----------------------------------------------------
 // Struttura per memorizzare i comandi di scrittura nei registri
 struct RegisterWriteCommand 
@@ -401,6 +400,61 @@ enum BK4819_SquelchMode_t
 };
 typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;	
 
+
+typedef struct 
+{
+    uint32_t Frequency;   // Frequenza corrente (es. 145 MHz)
+	uint8_t	Step;
+    BK4819_Mode_t Mode;         // Modalità corrente (FM, AM, SSB, ecc.)
+	uint8_t AGC;
+    uint8_t Gain;         // Guadagno RF corrente
+    uint8_t Sql;          // Livello Squelch corrente
+	BK4819_Filter_Bandwidth_t bw;
+	
+	uint8_t	micGain;
+	uint8_t txp;
+	uint8_t Tx_Dev;
+	
+	uint8_t scrambler;
+	uint8_t compander;
+	
+	uint8_t scn_port;
+	uint8_t mute_port;
+	
+    union 
+	{
+        struct 
+		{
+            bool monitor:1;		// 0x0001
+            bool rx:1;			// 0x0002
+            bool tx:1;			// 0x0004
+            bool scan:1;		// 0x0008
+			bool ctcss:1;		// 0x0010
+            bool dcs:1;			// 0x0020
+            bool tones:1;       // 0x0040
+			bool vuoto:1;		// ------	
+            bool flag9:1;		// 0x0100
+            bool flag10:1;		// 0x0200
+            bool flag11:1;		// 0x0400
+            bool flag12:1;		// 0x0800
+            bool flag13:1;		// 0x1000
+            bool flag14:1;		// 0x2000
+            bool shortpress:1;	// 0x4000
+            bool longpress:1;	// 0x8000
+
+        } bits;  
+        uint16_t Flags; 
+    } Flag;
+	
+} VfoData_t;
+
+
+#define INFO_STEP_SIZE 17 									// Numero di elementi in info_step e freq_step
+
+extern const char* info_step[];   
+extern const uint32_t freq_step[]; 
+
+
 // ----------------------------------------------------
 // Definizione della classe BK4819 per Arduino
 // ----------------------------------------------------
@@ -417,7 +471,7 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			
 			void BK4819_SCN_select( uint8_t csPin );
 			
-			void BK4819_Write_Register(uint16_t address, uint16_t data, bool direct);
+			bool BK4819_Write_Register(uint16_t address, uint16_t data, bool direct);
 			void BK4819_Init();  // Dichiara qui la funzione
 			void BK4819_RX_TurnOff(bool direct);
 			void BK4819_RX_TurnOn(bool direct);
@@ -433,7 +487,7 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			void BK4819_Set_Frequency(uint32_t Frequency, bool direct);
 			void BK4819_Set_AGC_Gain(uint8_t Agc, uint8_t Value, bool direct);
 			void BK4819_Set_Xtal(BK4819_Xtal_t mode, bool direct);
-			void BK4819_RF_Set_Agc(u8 mode, bool direct);
+			void BK4819_RF_Set_Agc(uint8_t mode, bool direct);
 			void BK4819_Set_AFC(uint8_t value, bool direct);
 			void BK4819_Set_Squelch(uint8_t Squelch_Open_RSSI,uint8_t Squelch_Close_RSSI,uint8_t Squelch_Open_Noise,uint8_t Squelch_Close_Noise,uint8_t Squelch_Close_Glitch,uint8_t Squelch_Open_Glitch, bool direct);
 			void BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode, bool direct);
@@ -453,13 +507,16 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 			
 			void BK4819_processRegisterWriteQueue(void);
 			void BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct);
+			void BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable);
 
 		private:
-			int _csPin;
 			int _MosiPin;
-			int _MisoPin;
+			int _csPin;
 			int _sckPin;
+			int _MisoPin;
+		
 			bool spiInUse;
+			uint16_t GPIO_reg;
 	};
 
 #endif

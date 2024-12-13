@@ -65,6 +65,11 @@ t_Vfo_Data VfoD;
 
 volatile bool spiInUse = false;
 
+uint16_t GPIO_reg = 0;
+
+const char* info_step[]   = {"1 M",   "100 K", "50 K", "25 K", "20 K", "12.5 K", "10 K", "9 K", "8.33 K", "5 K", "2.5 K", "1 K", "500 Hz", "100 Hz", "50 Hz", "20 Hz", "10 Hz"};
+const uint32_t freq_step[]= { 1000000, 100000,  50000,  25000,  20000,  12500,    10000,  9000,  8330,     5000,  2500,    1000,  500,      100,      50,      20,      10};
+
 
 // Coda per i comandi di scrittura
 ArduinoQueue<RegisterWriteCommand> registerWriteQueue(QUEUE_MAX_SIZE);
@@ -91,21 +96,29 @@ void BK4819::BK4819_processRegisterWriteQueue()
 // ---------------------------------------------------- Configurazione Libreria
 BK4819::BK4819(int csPin, int MosiPin, int MisoPin, int sckPin) 
 {
-    _csPin = csPin;
-    _MosiPin = MosiPin;
-    _MisoPin = MisoPin;
-    _sckPin = sckPin;
-												// Configura i pin
-    pinMode(_csPin, OUTPUT);					// Metti il pin in modalità output per la scrittura
-    pinMode(_sckPin, INPUT);					// Metti il pin in modalità input per la lettura	
-	pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura	
-	pinMode(_MisoPin, INPUT);   				// Metti il pin in modalità input per la lettura	
+	_MosiPin = MosiPin;
+	_csPin = csPin;
+	_sckPin = sckPin;
+	_MisoPin = MisoPin;
 	
-	digitalWrite(_sckPin, HIGH);  				// Imposta il clock alto inizialmente (modalità 3)
-    digitalWrite(_csPin, HIGH);   				// Disabilita inizialmente il chip select
-    
-    SPI.begin();                 				// Inizializza SPI
-    SPI.setClockDivider(SPI_CLOCK_DIV64); 		// Imposta la velocità SPI 250 Khz ( non aumentare la velocita' )
+	pinMode(_csPin, OUTPUT);						// Metti il pin in modalità output per la scrittura
+	digitalWrite(_csPin, HIGH);   					// Disabilita inizialmente il chip select	
+
+	#ifdef ESP32
+	
+	#else
+		SPI.end();		
+		SPI.begin();                 				// Inizializza SPI
+	#endif	
+
+	pinMode(_sckPin, INPUT);					// Metti il pin in modalità input 
+	pinMode(_MosiPin, INPUT);   				// Metti il pin in modalità input per la lettura	
+	pinMode(_MisoPin, INPUT);   				// Metti il pin in modalità input per la lettura
+
+	digitalWrite(_sckPin, HIGH);  				// Imposta il clock alto inizialmente (modalità 3)		
+
+	
+    // SPI.setClockDivider(SPI_CLOCK_DIV64); 		// Imposta la velocità SPI 250 Khz ( non aumentare la velocita' )
 }
 
 
@@ -117,25 +130,105 @@ void BK4819::BK4819_SCN_select( uint8_t csPin )
 	digitalWrite(_csPin, HIGH);   				// Disabilita inizialmente il chip select
 }
 
+#ifdef ESP32
+#include "soc/gpio_struct.h" // Include per accesso ai registri GPIO
+#include "driver/gpio.h"     // Include per funzioni GPIO
 
+bool BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct) 
+{
+	if ( direct )
+	{
+		uint32_t bitsToSend = (address & 0x7F) << 16 | data; 			// Combina indirizzo e dati
 
+		pinMode(_MosiPin, OUTPUT);  		
+		pinMode(_sckPin, OUTPUT);
+													
+		digitalWrite(_sckPin, LOW);
+		digitalWrite(_csPin, LOW);      			
+		delayMicroseconds(3); 
+
+		for (int8_t i = 23; i >= 0; i--) 
+		{
+			if (bitsToSend & (1 << i)) digitalWrite(_MosiPin, HIGH);	// MOSI HIGH
+			else                       digitalWrite(_MosiPin, LOW);     // MOSI LOW
+			
+			digitalWrite(_sckPin, HIGH); 								// CLK HIGH
+			delayMicroseconds(1);          								// Breve ritardo per sincronizzazione
+			digitalWrite(_sckPin, LOW);									// CLK LOW
+		}
+
+		digitalWrite(_csPin, HIGH); 									// CS HIGH
+		pinMode(_sckPin, INPUT); 
+		pinMode(_MosiPin, INPUT);  
+	}
+	else
+	{
+		if (registerWriteQueue.isFull()) return false;
+		RegisterWriteCommand cmd = {address, data};
+		registerWriteQueue.enqueue(cmd);
+	}
+	return true;
+}
+
+uint16_t BK4819::BK4819_Read_Register(uint16_t address) 
+{
+    uint16_t result = 0;
+
+	pinMode(_MosiPin, OUTPUT);  		
+	pinMode(_sckPin, OUTPUT);
+												
+	digitalWrite(_sckPin, LOW);
+	digitalWrite(_csPin, LOW);      			
+	delayMicroseconds(3); 
+
+    uint8_t addrWithRead = address | 0x80;								// Invia indirizzo con bit di lettura (aggiungi bit di lettura 0x80)
+
+    for (int8_t i = 7; i >= 0; i--) 
+	{
+		if (addrWithRead & (1 << i)) digitalWrite(_MosiPin, HIGH);	// MOSI HIGH
+		else                         digitalWrite(_MosiPin, LOW);   // MOSI LOW
+		
+		digitalWrite(_sckPin, HIGH); 								// CLK HIGH
+		delayMicroseconds(1);          								// Breve ritardo per sincronizzazione
+		digitalWrite(_sckPin, LOW);									// CLK LOW
+    }
+
+    pinMode(_MosiPin, INPUT);  
+
+    for (int8_t i = 15; i >= 0; i--) 
+	{
+		digitalWrite(_sckPin, HIGH); 								// CLK HIGH
+        delayMicroseconds(1);
+        if (digitalRead(_MosiPin)) result |= (1 << i);
+        digitalWrite(_sckPin, LOW);									// CLK LOW
+    }
+
+    digitalWrite(_csPin, HIGH); 									// CS HIGH
+	pinMode(_sckPin, INPUT); 
+
+    return result;
+}
+
+#else
+	
 // ---------------------------------------------------- Scrive in un registro del BK4819
-void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct) 
+
+bool BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct) 
 {
 	if ( direct )
 	{												// Definisci il timeout in microsecondi
 		const unsigned long timeout = 100000UL; 	// 10 millisecondi
-		unsigned long startTime = micros();
-													// Attendi il lock con timeout
-		while (spiInUse) 
+		unsigned long startTime = micros();		
+		
+		while (spiInUse) 							// Attendi il lock con timeout
 		{
 			if ((micros() - startTime) > timeout) 
 			{
 				spiInUse = false;					// Rilascia il lock
-				return;  							// Esci dalla funzione per evitare stallo
+				return false;  						// Esci dalla funzione per evitare stallo
 			}
 		}
-		
+
 		spiInUse = true;							// Prendi il lock
 		
 		pinMode(_MosiPin, OUTPUT);  		
@@ -145,9 +238,9 @@ void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct)
 													// 2. Ora abbassa il CS per iniziare la comunicazione
 		digitalWrite(_csPin, LOW);      			// Seleziona il chip
 		delayMicroseconds(3); 
-													// 3. Invia i dati SPI (usando modalità 0)
-		SPI.setDataMode(SPI_MODE0);
 		
+		SPI.beginTransaction(SPISettings(250000, MSBFIRST, SPI_MODE0));
+
 		SPI.transfer(address & 0x7F);   			// Bit di scrittura
 		SPI.transfer16(data);           			// Scrivi i 16 bit
 													// 4. Invia il fine della comunicazione
@@ -156,10 +249,13 @@ void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct)
 		pinMode(_sckPin, INPUT);  					// Imposta il clock alto inizialmente (modalità 3)
 		
 		spiInUse = false;							// Rilascia il lock
+		SPI.endTransaction(); 						// Termina la trasmissione
+		
+		return true;
 	}
 	else
 	{
-		if (registerWriteQueue.isFull()) return;
+		if (registerWriteQueue.isFull()) return false;
 
 		RegisterWriteCommand cmd = {address, data};
 		registerWriteQueue.enqueue(cmd);
@@ -167,8 +263,8 @@ void BK4819::BK4819_Write_Register(uint16_t address, uint16_t data, bool direct)
 	}
 }
 
-
 // ---------------------------------------------------- Legge da un registro del BK4819
+
 uint16_t BK4819::BK4819_Read_Register(uint16_t address) 
 {
 												// Definisci il timeout in microsecondi
@@ -209,6 +305,9 @@ uint16_t BK4819::BK4819_Read_Register(uint16_t address)
 	
     return result;
 }
+#endif
+
+
 
 // ******************************************************************************************************************************
 //
@@ -217,10 +316,12 @@ uint16_t BK4819::BK4819_Read_Register(uint16_t address)
 void BK4819::BK4819_Init() 
 {
     BK4819_SoftReset();							// Resetta il Beken
-	
+
 	BK4819_Write_Register(0x30, 0, true);		// Spegne il beken
-	
-	BK4819_Write_Register(0x33, 0xEFFF, false); // Configurazione GPIO subito dopo il reset per non avere uscite esposte.
+
+	GPIO_reg = 0xEFEF;
+
+	BK4819_Write_Register(0x33, GPIO_reg, true); // Configurazione GPIO subito dopo il reset per non avere uscite esposte.
 												// <15>	?		1: Output disable / 0: Output enable
 												// <14> GPIO6	1
 												// <13> GPIO5	1
@@ -234,7 +335,7 @@ void BK4819::BK4819_Init()
 												// <7> 	?		1: High when output is enabled / 0: Low when output is enabled
 												// <6>  GPIO6	1
 												// <5>  GPIO5	1
-												// <4>  GPIO4	1
+												// <4>  GPIO4	0
 												
 												// <3>  GPIO3	1
 												// <2>  GPIO2	1
@@ -264,11 +365,11 @@ void BK4819::BK4819_Init()
 												// <03:00>	GPIO0
 	
 	BK4819_Set_AF(AF_MUTE, true);				// Silenzia l'audio
-	
+
 	BK4819_RF_Set_Agc(0, true);					// Inizializza l'AGC (Automatic Gain Control)
 	BK4819_Set_AGC_Gain(AGC_MAN, 0, true);		// azzera il gain 
 	BK4819_Set_Squelch (255,255, 127,127, 127, 127, true); // setup Squelch al massimo valore
-	
+
 	BK4819_Clear_Interrupt(true);				// cancella gli eventuali interrupt pendenti
 	
 	BK4819_Set_Xtal(XTAL26M, true);
@@ -526,12 +627,13 @@ void BK4819::BK4819_IRQ_Set (BK4819_IRQType_t InterruptMask, bool direct)
 }	
 
 // ---------------------------------------------------- Check Stato Interrupt
-BK4819_IRQType_t BK4819::BK4819_Check_Irq_type( bool direct )
+BK4819_IRQType_t BK4819::BK4819_Check_Irq_type(bool direct) 
 {
-	BK4819_Write_Register(0x02, 0, direct);								// Cancella gli interrupt pendenti
-	const BK4819_IRQType_t irq = BK4819_Read_Register(0x02);			// legge gli interrupt in atto
-	return irq;
-}	
+    BK4819_Write_Register(0x02, 0, direct);                       // Cancella gli interrupt pendenti
+    const BK4819_IRQType_t irq = static_cast<BK4819_IRQType_t>(BK4819_Read_Register(0x02)); // Converte esplicitamente
+    return irq;
+}
+
 
 // ---------------------------------------------------- Imposta Frequenza
 void BK4819::BK4819_Set_Frequency(uint32_t Frequency, bool direct)
@@ -546,7 +648,7 @@ void BK4819::BK4819_Set_Frequency(uint32_t Frequency, bool direct)
 }
 
 // ---------------------------------------------------- Set registri AGC
-void BK4819::BK4819_RF_Set_Agc(u8 mode, bool direct)
+void BK4819::BK4819_RF_Set_Agc(uint8_t mode, bool direct)
 {
 	switch(mode)
 	{
@@ -1313,3 +1415,39 @@ void BK4819::BK4819_TxOn(bool direct)
 	BK4819_Write_Register(0x30, 0xC1FE, direct);	// Turn ON TX
 }
 
+// ---------------------------------------------------- 
+// <15>	?		1: Output disable / 0: Output enable
+// <14> GPIO6	1
+// <13> GPIO5	1
+// <12> GPIO4 *	0 ->enable out
+
+// <11> GPIO3	1
+// <10> GPIO2	1
+// <9>  GPIO1	1	
+// <8>  GPIO0	1
+
+// <7> 	?		1: High when output is enabled / 0: Low when output is enabled
+// <6>  GPIO6	1
+// <5>  GPIO5	1
+// <4>  GPIO4	1
+
+// <3>  GPIO3	1
+// <2>  GPIO2	1
+// <1>  GPIO1	1
+// <0>  GPIO0	1
+
+void BK4819::BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable) 
+{
+    uint16_t mask_output = 1 << (gpio_num+8);       		// Maschera per impostare lo stato (bit 0-7)
+
+    if (enable) 
+	{
+		GPIO_reg &= ~mask_output;
+    } 
+	else 
+	{
+        GPIO_reg |= mask_output;  							// Disabilita l'uscita (imposta bit alto a 1)
+    }
+
+    BK4819_Write_Register(0x33, GPIO_reg, false);
+}
