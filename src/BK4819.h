@@ -254,7 +254,7 @@ enum {
 #define BK4819_REG_70_MASK_TONE2_TUNING_GAIN	(0x7FU << BK4819_REG_70_SHIFT_TONE2_TUNING_GAIN)
 
 #define QUEUE_MAX_SIZE 10
-
+#define MAX_AGC_TABLE 31
 
 // ----------------------------------------------------
 // Struttura per memorizzare i comandi di scrittura nei registri
@@ -403,13 +403,14 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 
 typedef struct 
 {
-    uint32_t Frequency;   // Frequenza corrente (es. 145 MHz)
+    uint32_t Frequency;   				// Frequenza corrente (es. 145 MHz)
 	uint8_t	Step;
-    BK4819_Mode_t Mode;         // Modalità corrente (FM, AM, SSB, ecc.)
+    BK4819_Mode_t Mode;         		// Modalità corrente (FM, AM, SSB, ecc.)
 	uint8_t AGC;
-    uint8_t Gain;         // Guadagno RF corrente
-    uint8_t Sql;          // Livello Squelch corrente
-	BK4819_Filter_Bandwidth_t bw;
+    uint8_t Gain;         				// Guadagno RF corrente
+    uint16_t Sql;          				// Livello Squelch corrente
+	uint8_t Volume;					    // percentuale volume corrente
+	BK4819_Filter_Bandwidth_t bw;		// Bandwith
 	
 	uint8_t	micGain;
 	uint8_t txp;
