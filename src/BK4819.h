@@ -254,7 +254,7 @@ enum {
 #define BK4819_REG_70_MASK_TONE2_TUNING_GAIN	(0x7FU << BK4819_REG_70_SHIFT_TONE2_TUNING_GAIN)
 
 #define QUEUE_MAX_SIZE 10
-#define MAX_AGC_TABLE 31
+#define MAX_AGC_TABLE 25
 
 // ----------------------------------------------------
 // Struttura per memorizzare i comandi di scrittura nei registri
@@ -336,7 +336,8 @@ enum BK4819_Mode_t
 {
 	MODE_FM = 0,
 	MODE_AM,
-	MODE_SSB,
+	MODE_LSB,
+	MODE_USB,
 	MODE_CW,
 
 };
@@ -418,7 +419,7 @@ typedef struct
 	
 	uint8_t scrambler;
 	uint8_t compander;
-	
+
 	uint8_t scn_port;
 	uint8_t mute_port;
 	
@@ -433,15 +434,15 @@ typedef struct
 			bool ctcss:1;		// 0x0010
             bool dcs:1;			// 0x0020
             bool tones:1;       // 0x0040
-			bool vuoto:1;		// ------	
+			bool vuoto:1;		// 0x0080	
             bool flag9:1;		// 0x0100
             bool flag10:1;		// 0x0200
             bool flag11:1;		// 0x0400
             bool flag12:1;		// 0x0800
             bool flag13:1;		// 0x1000
             bool flag14:1;		// 0x2000
-            bool shortpress:1;	// 0x4000
-            bool longpress:1;	// 0x8000
+            bool flag15:1;		// 0x4000
+            bool flag16:1;		// 0x8000
 
         } bits;  
         uint16_t Flags; 
@@ -490,7 +491,6 @@ extern const uint32_t freq_step[];
 			void BK4819_Set_Xtal(BK4819_Xtal_t mode, bool direct);
 			void BK4819_RF_Set_Agc(uint8_t mode, bool direct);
 			void BK4819_Set_AFC(uint8_t value, bool direct);
-			void BK4819_Set_Squelch(uint8_t Squelch_Open_RSSI,uint8_t Squelch_Close_RSSI,uint8_t Squelch_Open_Noise,uint8_t Squelch_Close_Noise,uint8_t Squelch_Close_Glitch,uint8_t Squelch_Open_Glitch, bool direct);
 			void BK4819_Squelch_Mode ( BK4819_SquelchMode_t mode, bool direct);
 			
 			void BK4819_Disable_DTMF(bool direct);
@@ -509,6 +509,18 @@ extern const uint32_t freq_step[];
 			void BK4819_processRegisterWriteQueue(void);
 			void BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct);
 			void BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable);
+
+			void BK4819_Set_Squelch	(
+				uint8_t Squelch_Open_RSSI,
+				uint8_t Squelch_Close_RSSI,
+				uint8_t Squelch_Open_Noise,
+				uint8_t Squelch_Close_Noise,
+				uint8_t Squelch_Close_Glitch,
+				uint8_t Squelch_Open_Glitch,
+				uint8_t Delay_Open,
+				uint8_t Delay_Close,
+				bool direct	);
+
 
 		private:
 			int _MosiPin;

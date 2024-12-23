@@ -30,36 +30,30 @@ const t_gain_table gain_table[] =
 	{0x10	,90},      //	0 	  	-57   			0		0		2		0		
 	{0x1	,88},      //	1 		-55       		0		0	    0	    1
 	{0x9	,87},      //	2  		-54      		0		0	    1	    1
-	{0x2	,83},      //	3  		-50       		0		0	    0	    2
-	{0xA	,81},      //	4  		-48       		0		0	    1	    2
-	{0x12	,79},      //	5  		-46       		0		0	    2	    2
-	{0x2A	,77},      //	6  		-44       		0		1	    1	    2
-	{0x32	,75},      //	7  		-42       		0		1	    2	    2
-	{0x3A	,70},      //	8  		-37       		0		1	    3	    2
-	{0x20B	,68},      //   9  		-35       		2		0	    1	    3
-	{0x213	,64},      //   10 		-31      		2		0	    2	    3
-	{0x21B	,62},      //   11 		-29       		2		0	    3	    3
-	{0x214	,59},      //   12 		-26       		2		0	    2	    4
-	{0x21C	,56},      //   13 		-23      		2		0	    3	    4
-	{0x22D	,52},      //   14 		-19      		2		1	    1	    5
-	{0x23C	,50},      //   15 		-17      		2		1	    3	    4
-	{0x23D	,48},      //   16 		-15      		2		1	    3	    5
-	{0x255	,44},      //   17 		-11      		2		2	    2	    5
-	{0x25D	,42},      //   18 		-9      		2		2	    3	    5
-	{0x275	,39},      //   19 		-6       		2		3	    2	    5
-	{0x295	,33},      //   20 		 0       		2		4	    2	    5
-	{0x2B6	,31},      //   21 		+2        		2		4	    2	    6
-	{0x2B6	,28},      //   22 		+5 	   			2		5	    2	    6
-    {0x2B7	,23},      //   23 		+9       		2		5	    2	    7
-	{0x2DE	,20},      //   24 		+13        		2		6	    3	    6
-	{0x2DF	,17},      //   25 		+16        		2		6	    3	    7
-	{0x3B5	,13},      //   26 		+20        		3		5	    2	    5
-	{0x3B6	,9 },      //   27 		+22      		3		5	    2	    6
-	{0x3D6	,8 },      //   28 		+25       		3		6	    2	    6
-	{0x3BF	,3 },      //   29 		+28      		3		5		3		7					
-	{0x3DF	,2 },      //   30 		+31      		3		6		3		7
-	{0x3FF	,0 },      //   31 		+33  			3		7		3		7
-	
+	{0xA	,81},      //	3  		-48       		0		0	    1	    2
+	{0x12	,79},      //	4  		-46       		0		0	    2	    2
+	{0x2A	,77},      //	5  		-44       		0		1	    1	    2
+	{0x32	,75},      //	6  		-42       		0		1	    2	    2
+	{0x3A	,70},      //	7  		-37       		0		1	    3	    2
+	{0x20B	,68},      //   8 		-35       		2		0	    1	    3
+	{0x213	,64},      //   9		-31      		2		0	    2	    3
+	{0x21B	,62},      //   10 		-29       		2		0	    3	    3
+	{0x214	,59},      //   11		-26       		2		0	    2	    4
+	{0x21C	,56},      //   12		-23      		2		0	    3	    4
+	{0x23C	,50},      //   13 		-17      		2		1	    3	    4
+	{0x23D	,48},      //   14		-15      		2		1	    3	    5
+	{0x255	,44},      //   15		-11      		2		2	    2	    5
+	{0x25D	,42},      //   16		-9      		2		2	    3	    5
+	{0x275	,39},      //   17		-6       		2		3	    2	    5
+	{0x295	,33},      //   18   	 0       		2		4	    2	    5
+	{0x2B6	,28},      //   19 		+5 	   			2		5	    2	    6
+    {0x2B7	,23},      //   20 		+9       		2		5	    2	    7
+	{0x2DE	,20},      //   21 		+13        		2		6	    3	    6
+	{0x396	,9 },      //   22 		+22      		3		4	    2	    6
+	{0x3B6	,8 },      //   23 		+25       		3		5	    2	    6
+	{0x3DF	,3 },      //   24 		+28      		3		6		3		7					
+	{0x3FF	,0 },      //   25 		+33  			3		7		3		7
+		
 /*	
 	{0x354	,28},      //   22 		+5 	   			3		2	    2	    4
 	{0x36C	,23},      //   23 		+9       		3		3	    1	    4
@@ -383,7 +377,7 @@ void BK4819::BK4819_Init()
 
 	BK4819_RF_Set_Agc(0, true);					// Inizializza l'AGC (Automatic Gain Control)
 	BK4819_Set_AGC_Gain(AGC_MAN, 0, true);		// azzera il gain 
-	BK4819_Set_Squelch (255,255, 127,127, 127, 127, true); // setup Squelch al massimo valore
+	BK4819_Set_Squelch (255,255, 127,127, 127, 127, 1, 3, true); // setup Squelch al massimo valore
 
 	BK4819_Clear_Interrupt(true);				// cancella gli eventuali interrupt pendenti
 	
@@ -615,21 +609,7 @@ void BK4819::BK4819_Set_AF(AF_Type_t af, bool direct)
     BK4819_Write_Register(0x47, 0x6040 | (af << 8), direct);			// Scrive nel registro 47 per configurare la modalità AF
 }
 
-// ---------------------------------------------------- Cancella Interrupt con timeout
-void BK4819::BK4819_Clear_Interrupt(bool direct)
-{
-    uint16_t timeout_counter = 100;  							// Definisci un numero massimo di tentativi
 
-    while (timeout_counter--) 									// Diminuisci il contatore a ogni iterazione
-    {
-        BK4819_Write_Register(0x02, 0, direct); 				// Cancella gli interrupt pendenti
-
-        const uint16_t Status = BK4819_Read_Register(0x0C); 	// Registro Interrupt
-        if ((Status & 1u) == 0) break; 							// Se non ci sono più interrupt, esci dal ciclo
-
-        delayMicroseconds(100); // tempo di attesa per la lettura successiva
-    }
-}
 
 
 
@@ -649,6 +629,22 @@ BK4819_IRQType_t BK4819::BK4819_Check_Irq_type(bool direct)
     return irq;
 }
 
+// ---------------------------------------------------- Cancella Interrupt con timeout
+void BK4819::BK4819_Clear_Interrupt(bool direct)
+{
+    uint16_t timeout_counter = 100;  							// Definisci un numero massimo di tentativi
+	// BK4819_Read_Register(0x02);
+	
+    while (timeout_counter--) 									// Diminuisci il contatore a ogni iterazione
+    {
+        BK4819_Write_Register(0x02, 0, direct); 				// Cancella gli interrupt pendenti
+
+        const uint16_t Status = BK4819_Read_Register(0x0C); 	// Registro Interrupt
+        if ((Status & 1u) == 0) break; 							// Se non ci sono più interrupt, esci dal ciclo
+
+        delayMicroseconds(100); // tempo di attesa per la lettura successiva
+    }
+}
 
 // ---------------------------------------------------- Imposta Frequenza
 void BK4819::BK4819_Set_Frequency(uint32_t Frequency, bool direct)
@@ -885,6 +881,8 @@ void BK4819::BK4819_Set_Squelch
 	uint8_t Squelch_Close_Noise,
 	uint8_t Squelch_Close_Glitch,
 	uint8_t Squelch_Open_Glitch,
+	uint8_t Delay_Open,
+	uint8_t Delay_Close,
 	bool direct	)
 {
 	
@@ -929,9 +927,9 @@ void BK4819::BK4819_Set_Squelch
 	//
 	BK4819_Write_Register(0x4E,  			// 01 101 11 1 00000000  // original (*)
 						 (1u << 14) |       //  1 ???
-						 (5U << 11) |       // *5  squelch = open  delay .. 0 ~ 7		
-		                 (6u <<  9) |       // *3  squelch = close delay .. 0 ~ 7		
-		                  Squelch_Open_Glitch, direct);  //  0 ~ 255
+						 ((Delay_Open & 0x7)  << 11) |       // *5  squelch = open  delay .. 0 ~ 7		
+		                 ((Delay_Close & 0x7) <<  9) |       // *3  squelch = close delay .. 0 ~ 7		
+		                  Squelch_Open_Glitch, direct);  	 //  0 ~ 255
 
 	// REG_4F
 	//
@@ -1084,12 +1082,14 @@ void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct)
 				// ----------------
 				// 1011 0011 1110 1111     // Combinazione 0xB3EF
 
-			BK4819_Set_TxDeviation( 1250, direct );
+			BK4819_Write_Register(0x40,(3u << 12) | (1250), direct);
+			//BK4819_Set_TxDeviation( 1250, direct );
 
 			break;
 
 		case MODE_CW:			
-		case MODE_SSB:
+		case MODE_LSB:
+		case MODE_USB:
 			// REG_47
 			// ----------------------------			
 			// Undocumented bits 0x2040
@@ -1111,7 +1111,8 @@ void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct)
 			BK4819_Write_Register(0x47, reg | (AF_DSB << 8), direct);
 
 			BK4819_Set_AFC(0, direct);							// afc disable
-			BK4819_Write_Register(0x3D, 0x2aab, direct);		// IF Register = 0x2B45 // 0x2aab valore migliore
+			if (Modul == MODE_LSB) BK4819_Write_Register(0x3D, 0, direct);		 // IF Register = 0x2B45 // 0x2aab valore migliore
+			else 				   BK4819_Write_Register(0x3D, 0x2aab, direct);	 // IF Register = 0x2B45 // 0x2aab valore migliore				
 			
 			//12 DSP Voltage Setting = 1		1 
 			
@@ -1167,7 +1168,8 @@ void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct)
 				// -------------------
 				// 1011 0011 1110 1111  // Combinazione 0xB3EF
 
-			BK4819_Set_TxDeviation( 1200, direct );
+			BK4819_Write_Register(0x40,(3u << 12) | (1200), direct);
+			//BK4819_Set_TxDeviation( 1200, direct );
 
 			// vstep = STEP_20Hz;
 			// BW = 255;
