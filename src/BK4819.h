@@ -326,7 +326,7 @@ enum BK4819_AGC_t
 	AGC_AUTO = 0,
 	AGC_MAN,
 	AGC_FAST,
-	AGC_NOR,
+	AGC_NOR, 
 	AGC_SLOW,
 };
 typedef enum BK4819_AGC_t BK4819_AGC_t;
@@ -422,6 +422,7 @@ typedef struct
 
 	uint8_t scn_port;
 	uint8_t mute_port;
+	uint8_t Upconverter;
 	
     union 
 	{
@@ -454,8 +455,9 @@ typedef struct
 #define INFO_STEP_SIZE 17 									// Numero di elementi in info_step e freq_step
 
 extern const char* info_step[];   
+extern const size_t info_step_size;
 extern const uint32_t freq_step[]; 
-
+extern const t_gain_table gain_table[];
 
 // ----------------------------------------------------
 // Definizione della classe BK4819 per Arduino

@@ -77,6 +77,8 @@ volatile bool spiInUse = false;
 uint16_t GPIO_reg = 0;
 
 const char* info_step[]   = {"1 M",   "100 K", "50 K", "25 K", "20 K", "12.5 K", "10 K", "9 K", "8.33 K", "5 K", "2.5 K", "1 K", "500 Hz", "100 Hz", "50 Hz", "20 Hz", "10 Hz"};
+const size_t info_step_size = sizeof(info_step) / sizeof(info_step[0]);
+
 const uint32_t freq_step[]= { 1000000, 100000,  50000,  25000,  20000,  12500,    10000,  9000,  8330,     5000,  2500,    1000,  500,      100,      50,      20,      10};
 
 
