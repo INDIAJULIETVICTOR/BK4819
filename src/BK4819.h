@@ -419,6 +419,7 @@ typedef struct
 	
 	uint8_t scrambler;
 	uint8_t compander;
+	uint8_t NB;
 
 	uint8_t scn_port;
 	uint8_t mute_port;
