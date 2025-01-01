@@ -405,9 +405,10 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 typedef struct 
 {
     uint32_t Frequency;   				// Frequenza corrente (es. 145 MHz)
-	uint8_t	Step;
+	uint8_t	Step;						// step Frequenza	
     BK4819_Mode_t Mode;         		// Modalità corrente (FM, AM, SSB, ecc.)
-	uint8_t AGC;
+	uint8_t AGC;						// controllo AGC		
+	uint8_t AFC;						// controllo AFC
     uint8_t Gain;         				// Guadagno RF corrente
     uint16_t Sql;          				// Livello Squelch corrente
 	uint8_t Volume;					    // percentuale volume corrente
