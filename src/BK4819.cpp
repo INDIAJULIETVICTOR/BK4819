@@ -1039,16 +1039,16 @@ void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct)
 			
 		case MODE_FM:                                                                       		
 			BK4819_Set_AF(AF_FM, direct);                                                     		
-			BK4819_Set_AFC(4, direct);					// afc enable  medium value     
+			BK4819_Set_AFC(1, direct);					// afc enable  medium value     
 
-			BK4819_Write_Register(0x48, 0xB3A8, direct); 	
+			BK4819_Write_Register(0x48, 0xB2A8, direct); 	
 
 			BK4819_Set_TxDeviation( dev[4]*10, direct );
 			break;
 		
 		case MODE_AM:
 			BK4819_Set_AF(AF_AM, direct);
-			BK4819_Set_AFC(2, direct);				
+			BK4819_Set_AFC(1, direct);				
 
 			// REG_48 .. RX AF level
 			//
