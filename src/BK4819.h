@@ -405,6 +405,8 @@ typedef BK4819_SquelchMode_t BK4819_SquelchMode_t;
 typedef struct 
 {
     uint32_t Frequency;   				// Frequenza corrente (es. 145 MHz)
+	uint32_t StartFrequency;			// frequenza inizio scansione
+	uint32_t EndFrequency;				// frequenza fine scansione
 	uint8_t	Step;						// step Frequenza	
     BK4819_Mode_t Mode;         		// Modalità corrente (FM, AM, SSB, ecc.)
 	uint8_t AGC;						// controllo AGC		
