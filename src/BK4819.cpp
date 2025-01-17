@@ -1041,7 +1041,7 @@ void BK4819::BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct)
 			BK4819_Set_AF(AF_FM, direct);                                                     		
 			BK4819_Set_AFC(1, direct);					// afc enable  medium value     
 
-			BK4819_Write_Register(0x48, 0xB2A8, direct); 	
+			BK4819_Write_Register(0x48, 0xB2F8, direct); 	
 
 			BK4819_Set_TxDeviation( dev[4]*10, direct );
 			break;
@@ -1468,5 +1468,5 @@ void BK4819::BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable)
         GPIO_reg |= mask_output;  							// Disabilita l'uscita (imposta bit alto a 1)
     }
 
-    BK4819_Write_Register(0x33, GPIO_reg, false);
+    BK4819_Write_Register(0x33, GPIO_reg, true);
 }
