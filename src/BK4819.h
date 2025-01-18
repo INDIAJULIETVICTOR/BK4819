@@ -412,7 +412,7 @@ typedef struct
 	uint8_t AGC;						// controllo AGC		
 	uint8_t AFC;						// controllo AFC
     uint8_t Gain;         				// Guadagno RF corrente
-    uint8_t ExtGain;         			// Attenuazione RF 
+    uint16_t ExtGain;         			// Attenuazione RF 
     uint16_t Sql;          				// Livello Squelch corrente
 	uint8_t Volume;					    // percentuale volume corrente
 	BK4819_Filter_Bandwidth_t bw;		// Bandwith
