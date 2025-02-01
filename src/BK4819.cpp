@@ -1455,6 +1455,7 @@ void BK4819::BK4819_TxOn(bool direct)
 // <1>  GPIO1	1
 // <0>  GPIO0	1
 
+// ---------------------------------------------------- 
 void BK4819::BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable) 
 {
     uint16_t mask_output = 1 << (gpio_num+8);       		// Maschera per impostare lo stato (bit 0-7)
@@ -1469,4 +1470,34 @@ void BK4819::BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable)
     }
 
     BK4819_Write_Register(0x33, GPIO_reg, true);
+}
+
+// ---------------------------------------------------- 
+uint8_t BK4819::BK4819_Get_GPIO(uint8_t gpio_num) 
+{
+    uint16_t mask_input = 1 << (gpio_num + 8);  			// Maschera per il bit del GPIO richiesto
+    uint16_t gpio_state = BK4819_Read_Register(0x0A);
+    return (gpio_state & mask_input) ? 1 : 0;				// Restituisce 1 se il bit è alto, 0 se è basso
+}
+
+
+// ---------------------------------------------------- 
+void BK4819::BK4819_Disable_Scramble(bool direct)
+{
+	const uint16_t Value = BK4819_Read_Register(0x31);
+	BK4819_Write_Register(0x31, Value & ~(1u << 1),direct);
+}
+
+
+// ---------------------------------------------------- 
+void BK4819::BK4819_Enable_Scramble(uint8_t Type,bool direct)
+{
+	if(Type==0) BK4819_Disable_Scramble(direct);
+	else
+	{
+		const uint16_t Value = BK4819_Read_Register(0x31);
+		BK4819_Write_Register(0x31, Value | (1u << 1),direct);
+
+		BK4819_Write_Register(0x71, 9000 + (1000 * (Type-1)),direct);   // 10000 = 1000 hz
+	}
 }

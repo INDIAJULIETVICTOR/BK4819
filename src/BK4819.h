@@ -425,8 +425,9 @@ typedef struct
 	uint8_t compander;
 	uint8_t NB;
 
-	uint8_t scn_port;
-	uint8_t mute_port;
+	uint8_t beken_module;				// Modulo beken 0 o 1
+	uint8_t volume_port;				// porta DAC per volume
+
 	uint8_t Upconverter;
 	
     union 
@@ -516,6 +517,7 @@ extern const t_gain_table gain_table[];
 			void BK4819_processRegisterWriteQueue(void);
 			void BK4819_Set_Modulation(BK4819_Mode_t Modul, bool direct);
 			void BK4819_Set_GPIO_Output(uint8_t gpio_num, bool enable);
+			uint8_t BK4819_Get_GPIO(uint8_t gpio_num);
 
 			void BK4819_Set_Squelch	(
 				uint8_t Squelch_Open_RSSI,
@@ -527,7 +529,10 @@ extern const t_gain_table gain_table[];
 				uint8_t Delay_Open,
 				uint8_t Delay_Close,
 				bool direct	);
-
+				
+			void BK4819_Disable_Scramble(bool direct);				
+			void BK4819_Enable_Scramble(uint8_t Type,bool direct);
+			
 
 		private:
 			int _MosiPin;
