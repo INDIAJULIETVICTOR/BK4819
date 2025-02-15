@@ -417,9 +417,12 @@ typedef struct
 	uint8_t Volume;					    // percentuale volume corrente
 	BK4819_Filter_Bandwidth_t bw;		// Bandwith
 	
-	uint8_t	micGain;
-	uint8_t txp;
-	uint8_t Tx_Dev;
+	uint8_t	micGain;					// guadagno microfono
+	uint8_t txp;						// potenza trasmissione
+	uint8_t Tx_Dev;						
+	uint8_t Spcan;						// velocita' scansione * 50 mS		
+	uint8_t Spres;						// velocita' ripresa scansione * 50 mS		
+	uint8_t Scres;
 	
 	uint8_t scrambler;
 	uint8_t compander;
